@@ -1,0 +1,26 @@
+# Python
+*.egg-info
+*.pyc
+__pycache__/
+python_venv/
+
+# Generic, system, text editors
+*~
+\#*\#
+_autosave-*
+.DS_Store
+.~lock.*
+.*.swp
+*.bak
+.vscode/
+.idea/
+
+# KiCad
+*-backups
+*-cache
+*.bak
+*.bck
+*.drl
+*.kicad_prl
+*.lck
+plots/
