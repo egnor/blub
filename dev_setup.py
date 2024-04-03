@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 import filecmp
-import importlib
+import importlib.util
 import os
 import platform
 import shlex
