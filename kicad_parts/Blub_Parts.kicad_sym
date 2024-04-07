@@ -999,7 +999,7 @@
 					)
 				)
 			)
-			(pin bidirectional line
+			(pin passive line
 				(at -10.16 -10.16 0)
 				(length 2.54)
 				(name "D0_SCLK_SCK"
@@ -1017,7 +1017,7 @@
 					)
 				)
 			)
-			(pin bidirectional line
+			(pin passive line
 				(at -10.16 -12.7 0)
 				(length 2.54)
 				(name "D1_MOSI_SDA"
@@ -1053,7 +1053,7 @@
 					)
 				)
 			)
-			(pin bidirectional line
+			(pin passive line
 				(at -10.16 -15.24 0)
 				(length 2.54)
 				(name "D2_SDA"
@@ -1071,7 +1071,7 @@
 					)
 				)
 			)
-			(pin bidirectional line
+			(pin passive line
 				(at -10.16 -17.78 0)
 				(length 2.54)
 				(name "D3"
@@ -1089,7 +1089,7 @@
 					)
 				)
 			)
-			(pin bidirectional line
+			(pin passive line
 				(at -10.16 -20.32 0)
 				(length 2.54)
 				(name "D4"
@@ -1107,7 +1107,7 @@
 					)
 				)
 			)
-			(pin bidirectional line
+			(pin passive line
 				(at -10.16 -22.86 0)
 				(length 2.54)
 				(name "D5"
@@ -1125,7 +1125,7 @@
 					)
 				)
 			)
-			(pin bidirectional line
+			(pin passive line
 				(at -10.16 -25.4 0)
 				(length 2.54)
 				(name "D6"
@@ -1143,7 +1143,7 @@
 					)
 				)
 			)
-			(pin bidirectional line
+			(pin passive line
 				(at -10.16 -27.94 0)
 				(length 2.54)
 				(name "D7"

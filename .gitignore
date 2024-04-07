@@ -23,4 +23,5 @@ _autosave-*
 *.drl
 *.kicad_prl
 *.lck
+fab/
 plots/

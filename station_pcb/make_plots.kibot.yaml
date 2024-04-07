@@ -16,7 +16,7 @@ preflight:
       error: "footprint_type_mismatch"
 
 global:
-  out_dir: "plots"
+  out_dir: "fab"
   filters:
     - filter: "Nuisance warning about null environment.vars"
       error: "W009"
@@ -79,7 +79,7 @@ outputs:
     type: "compress"
     disable_run_by_default: "_JLCPCB_compress"
     options:
-      output: "%f%I%v_fab.%x"
+      output: "%f%I%v_layers_jlc.%x"
       files:
         - from_output: "jlcpcb_gerbers"
         - from_output: "jlcpcb_drills"
