@@ -12,6 +12,7 @@ dependencies = [
   "pint",
   "platformio",
   "pydantic",
+  "pyserial",
 ]
 
 # How to build this project as a Python package

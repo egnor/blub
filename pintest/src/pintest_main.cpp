@@ -1,8 +1,10 @@
 #include <algorithm>
 #include <array>
+#include <cctype>
 
 #include <Arduino.h>
 #include <NeoPixelBus.h>
+#include <Wire.h>
 
 #if ARDUINO_ARCH_ESP32
 #include <esp_log.h>
@@ -33,28 +35,124 @@ static NeoPixelBusType* strip = nullptr;
 static int strip_index = -1;
 static bool strip_spam = false;
 
+static int sda_pin = SDA;
+static int scl_pin = SCL;
+
+static int rx_pin = -1;
+static int tx_pin = -1;
+
+void run_i2c_scan() {
+  Wire.begin();
+
+  int found = 0;
+  for (int address = 1; address < 127; ++address) {
+    Serial.printf("Scanning 0x%02X...\r", address);
+    Wire.beginTransmission(address);
+    if (Wire.endTransmission() == 0) {
+      Serial.printf("Found device at 0x%02X\n", address);
+      ++found;
+    }
+  }
+  Serial.printf("I2C scan complete, %d devices found\n\n", found);
+  Wire.end();
+}
+
+void run_uart_terminal() {
+  SerialPIO port(tx_pin, rx_pin);
+  port.begin(9600);
+
+  char last_dat = 0, last_key = 0;
+  bool keep_running = true;
+  while (keep_running) {
+    int const dat_n = std::min(port.available(), Serial.availableForWrite());
+    for (int i = 0; i < dat_n; ++i) {
+      auto const dat = port.read();
+      if (dat != '\r' && dat != '\n') {
+        Serial.write(dat);
+      } else if (!(last_dat == '\r' && dat == '\n')) {
+        Serial.print("\r\n");
+      }
+      last_dat = dat;
+    }
+
+    int const key_n = std::min(Serial.available(), port.availableForWrite());
+    for (int i = 0; i < key_n; ++i) {
+      auto const key = Serial.read();
+      if (last_key == 'U' - 0x40) {
+        switch (toupper(key)) {
+          case 'Q':
+          case 'X':
+            Serial.printf("[%c] exit terminal\n", key);
+            keep_running = false;
+            break;
+
+          case 'U':
+            Serial.printf("[%c] send ctrl-U\n", key);
+            port.write('U' - 0x40);
+            break;
+
+          case '\r':
+          case '\n':
+          case '\e':
+            Serial.print("Never mind!\n");
+            break;
+
+          default:
+            if (key > 0 && key < 0x20) {
+              Serial.printf("*** Bad key ctrl-%c\n", key + 0x40);
+            } else if (key < 0x7F) {
+              Serial.printf("*** Bad key [%c]\n", key);
+            } else {
+              Serial.printf("*** Bad key #%d\n", key);
+            }
+            break;
+        }
+        Serial.print("\n");
+      } else if (key == 'U' - 0x40) {
+        Serial.print(
+           "\n<<< ctrl-U >>> UART terminal menu\n"
+           "  [9]600, [1]9200, [3]8400, [5]7600, 11520[0], [2]30400: set baud\n"
+           "  u: send literal ctrl-U\n"
+           "  q, x: exit UART terminal\n"
+           "  enter, escape: never mind\n"
+           "\n==> "
+        );
+      } else if (key != '\r' && key != '\n') {
+        port.write(key);
+      } else if (!(last_key == '\r' && key == '\n')) {
+        port.print("\r\n");
+      }
+      last_key = key;
+    }
+
+    delay(5);
+  }
+
+  port.end();
+}
+
 void loop() {
   std::array<char[8], pins.size()> pin_text = {};
 
   for (size_t i = 0; i < pins.size(); ++i) {
     auto const read = digitalRead(pins[i]);
     char const* emoji;
-    switch (pin_modes[i] | 0x20) {
-      case 'i': emoji = read ? "🔼" : "⬇️"; break;
-      case 'u': emoji = read ? "🎈" : "⤵️"; break;
-      case 'd': emoji = read ? "⏫" : "💧"; break;
-      case 'h': emoji = read ? "⚡" : "💀"; break;
-      case 'l': emoji = read ? "💥" : "🇴"; break;
-      case 'r': emoji = "🔴"; break;
-      case 'g': emoji = "🟢"; break;
-      case 'b': emoji = "🔵"; break;
-      case 'w': emoji = "⚪"; break;
-      case 'c': emoji = "🟦"; break;
-      case 'm': emoji = "🟪"; break;
-      case 'y': emoji = "🟨"; break;
-      case 'k': emoji = "⚫"; break;
-      case 'a': emoji = "🌈"; break;
-      case 'z': emoji = "🦓"; break;
+    switch (toupper(pin_modes[i])) {
+      case 'I': emoji = read ? "🔼" : "⬇️"; break;
+      case 'U': emoji = read ? "🎈" : "⤵️"; break;
+      case 'D': emoji = read ? "⏫" : "💧"; break;
+      case 'H': emoji = read ? "⚡" : "💀"; break;
+      case 'L': emoji = read ? "💥" : "🇴"; break;
+      case 'R': emoji = "🔴"; break;
+      case 'G': emoji = "🟢"; break;
+      case 'B': emoji = "🔵"; break;
+      case 'W': emoji = "⚪"; break;
+      case 'C': emoji = "🟦"; break;
+      case 'M': emoji = "🟪"; break;
+      case 'Y': emoji = "🟨"; break;
+      case 'K': emoji = "⚫"; break;
+      case 'A': emoji = "🌈"; break;
+      case 'Z': emoji = "🦓"; break;
       default: emoji = "???"; break;
     }
 
@@ -65,6 +163,10 @@ void loop() {
     if (i > 0) Serial.print(" ");
     if (pin_index == i) Serial.print("[");
     Serial.printf("%s%s", pin_name, emoji);
+    if (scl_pin == pins[i]) Serial.print("⏱️");
+    if (sda_pin == pins[i]) Serial.print("📊");
+    if (rx_pin == pins[i]) Serial.print("🗨️");
+    if (tx_pin == pins[i]) Serial.print("💬");
     if (pin_index == i) Serial.print("]");
   }
 
@@ -89,8 +191,8 @@ void loop() {
         }
       } else if (ch == '\r') {
         continue;  // Ignore CR which often comes with newline
-      } else if (ch < 32 || ch >= 127) {
-        Serial.printf("*** unknown char #%d\n\n", ch);
+      } else if (ch <= 0 || ch >= 127) {
+        Serial.printf("*** Bad char #%d (? for help)\n\n", ch);
         pending_char = 0;
         continue;
       }
@@ -129,29 +231,105 @@ void loop() {
         Serial.print(
            "\n<<< ? >>> help:\n"
            "  00-nn: select pin\n"
-           "  i: set pin to INPUT\n"
-           "  u: set pin to INPUT_PULLUP\n"
-           "  d: set pin to INPUT_PULLDOWN\n"
-           "  h: set pin to OUTPUT and HIGH\n"
-           "  l: set pin to OUTPUT and LOW\n"
+           "  i: set pin to INPUT (🔼/⬇️ for high/low)\n"
+           "  u: set pin to INPUT_PULLUP (🎈, ⤵️ if driven low)\n"
+           "  d: set pin to INPUT_PULLDOWN (💧, ⏫ if driven high)\n"
+           "  h: set pin to OUTPUT and HIGH (⚡, 💀 on conflict)\n"
+           "  l: set pin to OUTPUT and LOW (🇴, 💥 on conflict)\n"
            "  [rgbw/cmyk/az]: drive LED strip (lower=once, UPPER=repeat)\n"
+           "  ctrl-C: use pin for I2C SCL (⏱️)\n"
+           "  ctrl-D: use pin for I2C SDA (📊)\n"
+           "  ctrl-I: run I2C scanner\n"
+           "  ctrl-R: use pin for UART RX (⬅️)\n"
+           "  ctrl-X: use pin for UART TX (➡️)\n"
+           "  ctrl-U: run UART terminal\n"
            "\n"
         );
         break;
       }
 
+      if (ch < 0x20) {
+        auto const ctrl = ch + 0x40;
+        switch (ctrl) {
+          case 'C':
+            if (pin_index < 0) {
+              Serial.printf("*** ctrl-C (set I2C SCL): select a pin first\n\n");
+            } else {
+              scl_pin = pins[pin_index];
+            }
+            break;
+
+          case 'D':
+            if (pin_index < 0) {
+              Serial.printf("*** ctrl-D (set I2C SDA): select a pin first\n\n");
+            } else {
+              sda_pin = pins[pin_index];
+            }
+            break;
+
+          case 'I':
+            if (sda_pin < 0 || scl_pin < 0) {
+              Serial.printf("*** ctrl-I (I2C scan): need SDA/SCL pins\n\n");
+            } else if (sda_pin == scl_pin) {
+              Serial.printf("*** ctrl-I (I2C scan): SDA must != SCL\n\n");
+            } else if (!Wire.setSDA(sda_pin)) {
+              Serial.printf("*** ctrl-I (I2C scan): bad SDA p%d\n\n", sda_pin);
+            } else if (!Wire.setSCL(scl_pin)) {
+              Serial.printf("*** ctrl-I (I2C scan): bad SCL p%d\n\n", scl_pin);
+            } else {
+              Serial.printf("<<< ctrl-I >>> I2C scan\n");
+              run_i2c_scan();
+              next_millis = millis();
+            }
+            break;
+
+          case 'R':
+            if (pin_index < 0) {
+              Serial.printf("*** ctrl-R (set UART RX): select a pin first\n\n");
+            } else {
+              rx_pin = pins[pin_index];
+            }
+            break;
+
+          case 'X':
+            if (pin_index < 0) {
+              Serial.printf("*** ctrl-X (set UART TX): select a pin first\n\n");
+            } else {
+              tx_pin = pins[pin_index];
+            }
+            break;
+
+          case 'U':
+            if (rx_pin < 0 || tx_pin < 0) {
+              Serial.printf("*** ctrl-U (UART terminal): need RX/TX pins\n\n");
+            } else if (rx_pin == tx_pin) {
+              Serial.printf("*** ctrl-U (UART terminal): RX must != TX\n\n");
+            } else {
+              Serial.printf("<<< ctrl-U >>> UART terminal (ctrl-U for menu)\n");
+              run_uart_terminal();
+              next_millis = millis();
+            }
+            break;
+
+          default:
+            Serial.printf("*** Bad key ctrl-%c (? for help)\n\n", ctrl);
+            break;
+        }
+        break;
+      }
+
       int rgb = -1;
-      switch (ch | 0x20) {
-        case 'r': rgb = 0xFF0000; break;
-        case 'g': rgb = 0x00FF00; break;
-        case 'b': rgb = 0x0000FF; break;
-        case 'w': rgb = 0xFFFFFF; break;
-        case 'c': rgb = 0x00FFFF; break;
-        case 'm': rgb = 0xFF00FF; break;
-        case 'y': rgb = 0xFFFF00; break;
-        case 'k': rgb = 0x000000; break;
-        case 'a': rgb = 0x000000; break;
-        case 'z': rgb = 0x000000; break;
+      switch (toupper(ch)) {
+        case 'R': rgb = 0xFF0000; break;
+        case 'G': rgb = 0x00FF00; break;
+        case 'B': rgb = 0x0000FF; break;
+        case 'W': rgb = 0xFFFFFF; break;
+        case 'C': rgb = 0x00FFFF; break;
+        case 'M': rgb = 0xFF00FF; break;
+        case 'Y': rgb = 0xFFFF00; break;
+        case 'K': rgb = 0x000000; break;
+        case 'A': rgb = 0x000000; break;
+        case 'Z': rgb = 0x000000; break;
       }
 
       if (rgb >= 0) {
@@ -203,14 +381,14 @@ void loop() {
       }
 
       PinMode new_mode;
-      switch (ch | 0x20) {
-        case 'i': new_mode = INPUT; break;
-        case 'u': new_mode = INPUT_PULLUP; break;
-        case 'd': new_mode = INPUT_PULLDOWN; break;
-        case 'h': new_mode = OUTPUT; break;
-        case 'l': new_mode = OUTPUT; break;
+      switch (toupper(ch)) {
+        case 'I': new_mode = INPUT; break;
+        case 'U': new_mode = INPUT_PULLUP; break;
+        case 'D': new_mode = INPUT_PULLDOWN; break;
+        case 'H': new_mode = OUTPUT; break;
+        case 'L': new_mode = OUTPUT; break;
         default:
-          Serial.printf("*** unknown key [%c]\n\n", ch);
+          Serial.printf("*** Bad key [%c] (? for help)\n\n", ch);
           continue;
       }
       if (pin_index < 0) {
@@ -225,10 +403,10 @@ void loop() {
         strip_spam = false;
       }
 
-      pin_modes[pin_index] = ch | 0x20;
+      pin_modes[pin_index] = toupper(ch);
       pinMode(pins[pin_index], new_mode);
       if (new_mode == OUTPUT) {
-        auto const new_status = (ch | 0x20) == 'h' ? HIGH : LOW;
+        auto const new_status = toupper(ch) == 'H' ? HIGH : LOW;
         digitalWrite(pins[pin_index], new_status);
       }
       break;
