@@ -14,7 +14,7 @@ class LittleStatus {
     virtual ~LittleStatus() = default;
     virtual void line_printf(int line, char const* format, ...) = 0;
     virtual void set_line_size(int line, int size) = 0;
-    virtual U8G2* raw_display() const = 0;
+    virtual U8G2* raw_driver() const = 0;
 };
 
-std::unique_ptr<LittleStatus> make_little_status(std::unique_ptr<U8G2> display);
+std::unique_ptr<LittleStatus> make_little_status(std::unique_ptr<U8G2> driver);
