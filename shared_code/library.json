@@ -1,0 +1,10 @@
+{
+  "name": "shared_code",
+  "version": "0.0",
+  "description": "Project Blub shared embedded code utilities",
+  "keywords": [],
+  "build": { "srcDir": "." },
+  "dependencies": {
+    "U8g2": "^2.35.9"
+  }
+}
