@@ -519,7 +519,7 @@
       "svg": "",
       "vrml": ""
     },
-    "page_layout_descr_file": "/home/egnor/source/blub/kicad_parts/sheet_layout.kicad_wks"
+    "page_layout_descr_file": "/home/egnor/source/blub/shared_parts/sheet_layout.kicad_wks"
   },
   "schematic": {
     "annotate_start_num": 0,
@@ -608,7 +608,7 @@
       "version": 1
     },
     "net_format_name": "",
-    "page_layout_descr_file": "/home/egnor/source/blub/kicad_parts/sheet_layout.kicad_wks",
+    "page_layout_descr_file": "/home/egnor/source/blub/shared_parts/sheet_layout.kicad_wks",
     "plot_directory": "",
     "spice_current_sheet_as_root": false,
     "spice_external_command": "spice \"%I\"",
