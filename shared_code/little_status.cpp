@@ -100,7 +100,8 @@ class LittleStatusDef : public LittleStatus {
   int draw_one_line(int line, int top_y) {
     if (line < 0 || line >= lines.size()) return top_y;
     auto const& refresh = lines[line];
-    if (refresh.size < MIN_SIZE) return top_y;
+    uint8_t const* font = font_for_size(refresh.size, false);
+    if (font == nullptr) return top_y;
 
     if (drawn_y > top_y) {
       int const clear_to_y = std::min(top_y + refresh.size, drawn_y);
@@ -109,23 +110,6 @@ class LittleStatusDef : public LittleStatus {
     }
 
     if (refresh.text.empty()) return top_y + refresh.size;
-
-    uint8_t const* font;
-    bool const bold = false;  // TODO: Implement bold
-    switch (refresh.size) {
-      case 6: font = u8g2_font_u8glib_4_tr;  // No bold at this size
-      case 7: font = bold ? u8g2_font_wedge_tr : u8g2_font_tinypixie2_tr; break;
-      case 8: font = bold ? u8g2_font_squeezed_b6_tr
-                          : u8g2_font_squeezed_r6_tr; break;
-      case 9:
-      case 10: font = bold ? u8g2_font_NokiaSmallBold_tr
-                           : u8g2_font_NokiaSmallPlain_tr; break;
-      case 11: font = bold ? u8g2_font_helvB08_tr : u8g2_font_helvR08_tr; break;
-      case 12: font = bold ? u8g2_font_t0_11b_tr : u8g2_font_t0_11_tr; break;
-      case 13:
-      case 14: font = bold ? u8g2_font_t0_13b_tr : u8g2_font_t0_13_tr; break;
-      default: font = bold ? u8g2_font_helvB10_tr : u8g2_font_helvR10_tr; break;
-    }
 
     driver->setDrawColor(1);
     driver->setFont(font);
@@ -141,6 +125,24 @@ class LittleStatusDef : public LittleStatus {
     int const bot_y = std::min(top_y + refresh.size, screen_h);
     if (bot_y > drawn_y) drawn_y = bot_y;
     return bot_y;
+  }
+
+  uint8_t const* font_for_size(int size, bool bold) {
+    if (size < MIN_SIZE) return nullptr;
+    switch (size) {
+      case 5: return u8g2_font_3x3basic_tr;
+      case 6: return u8g2_font_u8glib_4_tr;
+      case 7: return bold ? u8g2_font_wedge_tr : u8g2_font_tinypixie2_tr;
+      case 8: return bold ? u8g2_font_squeezed_b6_tr : u8g2_font_squeezed_r6_tr;
+      case 9:
+      case 10: return bold ? u8g2_font_NokiaSmallBold_tr
+                           : u8g2_font_NokiaSmallPlain_tr;
+      case 11: return bold ? u8g2_font_helvB08_tr : u8g2_font_helvR08_tr;
+      case 12: return bold ? u8g2_font_t0_11b_tr : u8g2_font_t0_11_tr;
+      case 13:
+      case 14: return bold ? u8g2_font_t0_13b_tr : u8g2_font_t0_13_tr;
+      default: return bold ? u8g2_font_helvB10_tr : u8g2_font_helvR10_tr;
+    }
   }
 
   void push_rect(int x, int y, int w, int h) {
