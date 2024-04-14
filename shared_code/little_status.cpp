@@ -9,13 +9,7 @@
 
 namespace {
 
-struct status_line {
-  int size = 0;
-  std::string text;
-};
-
 class LittleStatusDef : public LittleStatus {
-
  public:
   virtual ~LittleStatusDef() {}
 
@@ -24,16 +18,16 @@ class LittleStatusDef : public LittleStatus {
       screen_w(driver->getDisplayWidth()),
       screen_h(driver->getDisplayHeight()) {
     drawn_y = driver->getDisplayHeight();  // Erase any existing content
-    lines.resize((drawn_y / 6) + 1);
+    rows.resize((drawn_y / 6) + 1);
 
     int const line_max = (screen_w / 2) + 1;
     temp_text.reserve(line_max);
-    for (auto& init : lines) init.text.reserve(line_max);
+    for (auto& row : rows) row.text.reserve(line_max);
   }
 
   virtual void line_printf(int line, char const* format, ...) override {
-    if (line < 0 || line >= lines.size()) return;
-    auto& update = lines[line];
+    if (line < 0 || line >= rows.size()) return;
+    auto& row = rows[line];
 
     va_list args;
     va_start(args, format);
@@ -42,45 +36,41 @@ class LittleStatusDef : public LittleStatus {
     temp_text.resize(strlen(temp_text.data()));
     va_end(args);
 
-    if (temp_text != update.text) {
-      update.text = temp_text;
+    if (temp_text != row.text) {
+      auto* const u8g2 = driver->getU8g2();
 
-      int top_y = 0;
-      for (int i = 0; i < line; ++i) top_y += lines[i].size;
-      int const bot_y = draw_one_line(line, top_y);
-      push_rect(0, top_y, screen_w, bot_y - top_y);
-    }
-  }
-
-  virtual void set_line_size(int line, int size) override {
-    if (line < 0 || line >= lines.size()) return;
-    auto& update = lines[line];
-
-    if (size <= 0) {
-      size = 0;
-    } else if (size < MIN_SIZE) {
-      size = MIN_SIZE;
-    } else if (size > MAX_SIZE) {
-      size = MAX_SIZE;
-    }
-
-    if (size != update.size) {
-      update.size = size;
-
-      int top_y = 0;
-      for (int i = 0; i < line; ++i) top_y += lines[i].size;
-
-      int bot_y = top_y;
-      for (int i = line; i < lines.size(); ++i) {
-        bot_y = draw_one_line(i, bot_y);
+      int const old_size = row.max_size;
+      row.text = temp_text;
+      row.max_size = 0;
+      row.baseline = 0;
+      row.left_x = 0;
+      text_chunk chunk;
+      while (next_chunk(row.text, &chunk)) {
+        uint8_t const* font = font_for_size(chunk.size, chunk.bold);
+        if (font != nullptr && chunk.end > chunk.begin) {
+          driver->setFont(font);
+          if (row.max_size == 0) {
+            row.left_x = -u8g2_GetStrX(u8g2, &row.text[chunk.begin]);
+          }
+          row.max_size = std::max(row.max_size, chunk.size);
+          row.baseline = std::max(row.baseline, (int) u8g2->font_ref_ascent);
+        }
       }
 
-      if (bot_y < drawn_y) {
-        int const blank_h = drawn_y - bot_y;
-        driver->setDrawColor(0);
-        driver->drawBox(0, bot_y, screen_w, blank_h);
-        drawn_y = bot_y;
-        bot_y += blank_h;
+      int top_y = 0;
+      for (int i = 0; i < line; ++i) top_y += rows[i].max_size;
+      int bot_y = draw_one_line(line, top_y);
+      if (row.max_size != old_size) {
+        for (int i = line + 1; i < rows.size(); ++i) {
+          bot_y = draw_one_line(i, bot_y);
+        }
+        if (bot_y < drawn_y) {
+          int const blank_h = drawn_y - bot_y;
+          driver->setDrawColor(0);
+          driver->drawBox(0, bot_y, screen_w, blank_h);
+          drawn_y = bot_y;
+          bot_y += blank_h;
+        }
       }
 
       push_rect(0, top_y, screen_w, bot_y - top_y);
@@ -90,44 +80,108 @@ class LittleStatusDef : public LittleStatus {
   virtual U8G2* raw_driver() const override { return driver.get(); }
 
  private:
+  struct row {
+    int max_size = 0;
+    int baseline = 0;
+    int left_x = 0;
+    std::string text;
+  };
+
+  struct text_chunk {
+    int begin = 0, end = 0;
+    int column = 0;
+    int size = 8;
+    bool bold = false;
+    bool inverse = false;
+  };
+
   std::unique_ptr<U8G2> const driver;
   int const screen_w, screen_h;
 
-  std::vector<status_line> lines;
+  std::vector<row> rows;
   std::string temp_text;
   int drawn_y = 0;
 
   int draw_one_line(int line, int top_y) {
-    if (line < 0 || line >= lines.size()) return top_y;
-    auto const& refresh = lines[line];
-    uint8_t const* font = font_for_size(refresh.size, false);
-    if (font == nullptr) return top_y;
+    if (line < 0 || line >= rows.size()) return top_y;
+    auto const& row = rows[line];
 
     if (drawn_y > top_y) {
-      int const clear_to_y = std::min(top_y + refresh.size, drawn_y);
+      int const clear_to_y = std::min(top_y + row.max_size, drawn_y);
       driver->setDrawColor(0);
       driver->drawBox(0, top_y, screen_w, clear_to_y - top_y);
     }
 
-    if (refresh.text.empty()) return top_y + refresh.size;
-
     driver->setDrawColor(1);
-    driver->setFont(font);
     driver->setFontMode(1);  // For _tr fonts
     driver->setFontPosBaseline();
-
-    // https://github.com/olikraus/u8g2/issues/2299
     auto* const u8g2 = driver->getU8g2();
-    int const x_offset = u8g2_GetStrX(u8g2, refresh.text.c_str());
-    int const baseline_y = top_y + u8g2->font_ref_ascent;
-    driver->drawStr(-x_offset, baseline_y, refresh.text.c_str());
 
-    int const bot_y = std::min(top_y + refresh.size, screen_h);
+    int text_x = row.left_x;
+    int const text_y = top_y + row.baseline;
+    text_chunk chunk;
+    while (next_chunk(row.text, &chunk)) {
+      uint8_t const* font = font_for_size(chunk.size, chunk.bold);
+      if (font == nullptr) continue;
+      driver->setFont(font);
+      driver->setDrawColor(chunk.inverse ? 0 : 1);
+      for (int c = chunk.begin; c < chunk.end; ++c) {
+        text_x += driver->drawGlyph(text_x, text_y, row.text[c]);
+      }
+    }
+
+    int const bot_y = std::min(top_y + row.max_size, screen_h);
     if (bot_y > drawn_y) drawn_y = bot_y;
     return bot_y;
   }
 
-  uint8_t const* font_for_size(int size, bool bold) {
+  static bool next_chunk(std::string const& text, text_chunk* chunk) {
+    int const size = text.size();
+    chunk->begin = chunk->end;
+    for (;;) {
+      if (chunk->begin >= size) {
+        chunk->begin = chunk->end = size;
+        return false;
+      }
+
+      if (text[chunk->begin] >= 0x20) {
+        chunk->end = chunk->begin + 1;
+        while (chunk->end < size && text[chunk->end] >= 0x20) ++chunk->end;
+        return true;
+      }
+
+      switch (text[chunk->begin++]) {
+        case '\b':
+          chunk->bold = !chunk->bold;
+          break;
+        case '\f':
+          if (chunk->begin < size &&
+              text[chunk->begin] >= '0' && text[chunk->begin] <= '9') {
+            chunk->size = text[chunk->begin++] - '0';
+            if (chunk->size < MIN_SIZE && chunk->begin < size &&
+                text[chunk->begin] >= '0' && text[chunk->begin] <= '9') {
+              chunk->size = chunk->size * 10 + (text[chunk->begin++] - '0');
+            }
+            if (chunk->size != 0) {
+              chunk->size = std::max(chunk->size, MIN_SIZE);
+              chunk->size = std::min(chunk->size, MAX_SIZE);
+            }
+          }
+          break;
+        case '\t':
+          ++chunk->column;
+          break;
+        case '\v':
+          chunk->inverse = !chunk->inverse;
+          break;
+        default:
+          chunk->end = chunk->begin + 1;
+          return true;
+      }
+    }
+  }
+
+  static uint8_t const* font_for_size(int size, bool bold) {
     if (size < MIN_SIZE) return nullptr;
     switch (size) {
       case 5: return u8g2_font_3x3basic_tr;

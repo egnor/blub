@@ -8,12 +8,11 @@
 
 class LittleStatus {
   public:
-    static constexpr int MIN_SIZE = 6;
+    static constexpr int MIN_SIZE = 5;
     static constexpr int MAX_SIZE = 15;
 
     virtual ~LittleStatus() = default;
     virtual void line_printf(int line, char const* format, ...) = 0;
-    virtual void set_line_size(int line, int size) = 0;
     virtual U8G2* raw_driver() const = 0;
 };
 
