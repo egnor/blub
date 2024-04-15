@@ -16,13 +16,13 @@ std::unique_ptr<LittleStatus> status;
 
 void loop() {
   Serial.printf("UPDATING\n");
-  status->line_printf(0, "\f6\b6 points of \f15text\f6\b and what do you get");
-  status->line_printf(1, "\f7Slightly bigger \b7 pixel text");
-  status->line_printf(2, "\f8This is some \b8 pixel text");
-  status->line_printf(3, "\f9And now \b9 pixels\b high");
-  status->line_printf(4, "\f11This one \bgoes to 11\b");
-  status->line_printf(5, "\f12\b12 noon\b or midnight");
-  status->line_printf(6, "\f14\bFourteen\b is a lot");
+  status->line_printf(0, "\f6\b6 \vpoints\v of \f15text\f6\b, what do you get");
+  status->line_printf(1, "\f7Slightly \vbigger\v \b7 pixel text");
+  status->line_printf(2, "\f8This is some \b8 \vpixel\v text");
+  status->line_printf(3, "\f9And now \b9 pixels\b \vhigh");
+  status->line_printf(4, "\f11\vThis one\v \bgoes to 11\b");
+  status->line_printf(5, "\f12\b12 \vnoon\b or\v midnight");
+  status->line_printf(6, "\f14\bFourteen\b is a \vlot");
   delay(100);
 }
 
