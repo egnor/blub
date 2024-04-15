@@ -3,11 +3,8 @@
   "version": "0.0",
   "description": "Project Blub shared embedded code utilities",
   "keywords": [],
-  "build": {
-    "srcDir": ".",
-    "flags": ["-DU8G2_NO_BALANCED_STR_WIDTH_CALCULATION"]
-  },
+  "build": { "srcDir": "." },
   "dependencies": {
-    "U8g2": "^2.35.17"
+    "olikraus/U8g2": "^2.35.17"
   }
 }

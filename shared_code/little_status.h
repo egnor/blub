@@ -4,16 +4,13 @@
 
 #include <memory>
 
-#include "U8g2lib.h"
+extern "C" struct u8g2_struct;
 
 class LittleStatus {
   public:
-    static constexpr int MIN_SIZE = 5;
-    static constexpr int MAX_SIZE = 15;
-
     virtual ~LittleStatus() = default;
     virtual void line_printf(int line, char const* format, ...) = 0;
-    virtual U8G2* raw_driver() const = 0;
+    virtual u8g2_struct* raw_driver() const = 0;
 };
 
-std::unique_ptr<LittleStatus> make_little_status(std::unique_ptr<U8G2> driver);
+std::unique_ptr<LittleStatus> make_little_status(u8g2_struct* driver);
