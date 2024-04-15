@@ -23,7 +23,7 @@ class DummyStatus : public LittleStatus {
 
 static void print_log_prefix(Print* log_output, int level) {
   auto const now = millis();
-  log_output->printf("%7.3f ", now * 1e-3);
+  log_output->printf("%7.3f ", now * 1e-3f);
   switch (level) {
     case LOG_LEVEL_FATAL: log_output->print("💥 "); break;
     case LOG_LEVEL_ERROR: log_output->print("🔥 "); break;
