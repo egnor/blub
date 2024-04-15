@@ -5,6 +5,7 @@
 #include <string>
 #include <vector>
 
+// This file only uses u8g2.h, but pio won't find the library based on that?
 #include <U8g2lib.h>
 
 namespace {
@@ -214,6 +215,6 @@ class LittleStatusDef : public LittleStatus {
 
 }  // namespace
 
-std::unique_ptr<LittleStatus> make_little_status(u8g2_t* driver) {
-  return std::make_unique<LittleStatusDef>(driver);
+LittleStatus* make_little_status(u8g2_t* driver) {
+  return new LittleStatusDef(driver);
 }

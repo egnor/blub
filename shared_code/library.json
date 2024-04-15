@@ -5,6 +5,7 @@
   "keywords": [],
   "build": { "srcDir": "." },
   "dependencies": {
+    "thijse/ArduinoLog": "^1.1.1",
     "olikraus/U8g2": "^2.35.17"
   }
 }

@@ -2,8 +2,6 @@
 
 #pragma once
 
-#include <memory>
-
 extern "C" struct u8g2_struct;
 
 class LittleStatus {
@@ -13,4 +11,4 @@ class LittleStatus {
     virtual u8g2_struct* raw_driver() const = 0;
 };
 
-std::unique_ptr<LittleStatus> make_little_status(u8g2_struct* driver);
+LittleStatus* make_little_status(u8g2_struct* driver);
