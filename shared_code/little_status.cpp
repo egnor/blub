@@ -8,6 +8,8 @@
 // This file only uses u8g2.h, but pio won't find the library based on that?
 #include <U8g2lib.h>
 
+#include "chatty_logging.h"
+
 namespace {
 
 class LittleStatusDef : public LittleStatus {
@@ -25,13 +27,22 @@ class LittleStatusDef : public LittleStatus {
     auto& row = rows[line];
 
     temp.resize(temp.capacity());
-    do {
+    while (true) {
       va_list args;
       va_start(args, format);
-      int const need = vsnprintf(temp.data(), temp.size(), format, args);
+      auto const len = vsnprintf(temp.data(), temp.size(), format, args);
       va_end(args);
-      temp.resize(need < temp.size() ? need : need + 1);
-    } while (temp.size() == temp.capacity());
+
+      if (len >= temp.size()) {
+        temp.resize(len + 1);
+      } else if (len < 0) {
+        CL_PROBLEM("Bad LittleStatus format (line %d): %s", line, format);
+        return;
+      } else {
+        temp.resize(len);
+        break;
+      }
+    }
 
     if (temp != row.text) {
       int const old_height = row.height;
@@ -40,11 +51,11 @@ class LittleStatusDef : public LittleStatus {
       row.baseline = 0;
       text_chunk chunk;
       while (next_chunk(row.text, &chunk)) {
+        row.height = std::max(row.height, chunk.height);
         uint8_t const* font = font_for_height(chunk.height, chunk.bold);
         if (font != nullptr && chunk.end > chunk.begin) {
           u8g2_SetFont(u8g2, font);
           int const ascent = u8g2->font_ref_ascent;
-          row.height = std::max(row.height, chunk.height);
           row.baseline = std::max(row.baseline, ascent + 1);
         }
       }
@@ -107,29 +118,30 @@ class LittleStatusDef : public LittleStatus {
     int last_tabs = -1;
     text_chunk chunk;
     while (next_chunk(row.text, &chunk)) {
+      if (chunk.end <= chunk.begin) continue;
       uint8_t const* font = font_for_height(chunk.height, chunk.bold);
-      if (font != nullptr && chunk.end > chunk.begin) {
-        u8g2_SetFont(u8g2, font);
-        int chunk_w = u8g2_GetGlyphWidth(u8g2, row.text[chunk.begin]);
-        int const first_offset = u8g2->glyph_x_offset;
-        for (int c = chunk.begin + 1; c < chunk.end; ++c) {
-          char const ch = row.text[c];
-          chunk_w += (ch <= 5) ? ch : u8g2_GetGlyphWidth(u8g2, ch);
-        }
+      if (font == nullptr) continue;
 
-        if (chunk.tabs > last_tabs) {
-          int const tab_x = (chunk.tabs * u8g2->width) / (row.tabs + 1);
-          last_tabs = chunk.tabs;
-          text_x = std::max(text_x, tab_x - first_offset);
-        }
+      u8g2_SetFont(u8g2, font);
+      int chunk_w = u8g2_GetGlyphWidth(u8g2, row.text[chunk.begin]);
+      int const first_offset = u8g2->glyph_x_offset;
+      for (int c = chunk.begin + 1; c < chunk.end; ++c) {
+        char const ch = row.text[c];
+        chunk_w += (ch <= 5) ? ch : u8g2_GetGlyphWidth(u8g2, ch);
+      }
 
-        u8g2_SetDrawColor(u8g2, chunk.inverse ? 1 : 0);
-        u8g2_DrawBox(u8g2, text_x, row.top_y, chunk_w, row.height);
-        u8g2_SetDrawColor(u8g2, chunk.inverse ? 0 : 1);
-        for (int c = chunk.begin; c < chunk.end; ++c) {
-          char const ch = row.text[c];
-          text_x += (ch <= 5) ? ch : u8g2_DrawGlyph(u8g2, text_x, text_y, ch);
-        }
+      if (chunk.tabs > last_tabs) {
+        int const tab_x = (chunk.tabs * u8g2->width) / (row.tabs + 1);
+        last_tabs = chunk.tabs;
+        text_x = std::max(text_x, tab_x - first_offset);
+      }
+
+      u8g2_SetDrawColor(u8g2, chunk.inverse ? 1 : 0);
+      u8g2_DrawBox(u8g2, text_x, row.top_y, chunk_w, row.height);
+      u8g2_SetDrawColor(u8g2, chunk.inverse ? 0 : 1);
+      for (int c = chunk.begin; c < chunk.end; ++c) {
+        char const ch = row.text[c];
+        text_x += (ch <= 5) ? ch : u8g2_DrawGlyph(u8g2, text_x, text_y, ch);
       }
     }
 
@@ -161,14 +173,11 @@ class LittleStatusDef : public LittleStatus {
           if (chunk->begin < size &&
               text[chunk->begin] >= '0' && text[chunk->begin] <= '9') {
             chunk->height = text[chunk->begin++] - '0';
-            if (chunk->height < MIN_HEIGHT && chunk->begin < size &&
+            if (chunk->height * 10 <= MAX_HEIGHT && chunk->begin < size &&
                 text[chunk->begin] >= '0' && text[chunk->begin] <= '9') {
               chunk->height = chunk->height * 10 + (text[chunk->begin++] - '0');
             }
-            if (chunk->height != 0) {
-              chunk->height = std::max(chunk->height, MIN_HEIGHT);
-              chunk->height = std::min(chunk->height, MAX_HEIGHT);
-            }
+            chunk->height = std::min(chunk->height, MAX_HEIGHT);
           }
           break;
         case '\t':

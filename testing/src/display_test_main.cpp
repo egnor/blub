@@ -16,6 +16,5 @@ void loop() {
 
 void setup() {
   while (!Serial.dtr() && millis () < 2000) {}
-  blub_station_init("displaytest");
-  Log.info("### 🖵  DISPLAY TEST ###");
+  blub_station_init("BLUB Display Test");
 }
