@@ -15,9 +15,11 @@ struct meter {
   Adafruit_INA228 driver;
 };
 
-std::array<meter, 1> meters = {
+std::array<meter, 3> meters({
   {INA228_I2CADDR_DEFAULT, "Load"},
-};
+  {INA228_I2CADDR_DEFAULT + 1, "PPT"},
+  {INA228_I2CADDR_DEFAULT + 4, "Panel"},
+});
 
 void loop() {
   CL_NOTE("LOOP");
@@ -27,12 +29,12 @@ void loop() {
 
   char line[80] = "";
   for (auto& meter : meters) {
-    sprintf(line + strlen(line), "\t\f9\b%s", meter.name);
-    CL_NOTE("%s: %.1fV %.6fA [%.6fVs] %.6fW %.6fJ %.1fC", meter.name,
+    sprintf(line + strlen(line), "\t\f9\b%s\b", meter.name);
+    CL_NOTE("%s: %.1fV %.1fmA [%.3fmVs] %.0fmW %.3fJ %.1fC", meter.name,
             meter.driver.readBusVoltage() * 1e-3,
-            meter.driver.readCurrent() * 1e-3,
-            meter.driver.readShuntVoltage() * 1e-3,
-            meter.driver.readPower() * 1e-3,
+            meter.driver.readCurrent(),
+            meter.driver.readShuntVoltage(),
+            meter.driver.readPower(),
             meter.driver.readEnergy(),
             meter.driver.readDieTemp());
   }
@@ -41,13 +43,13 @@ void loop() {
   strcpy(line, "");
   for (auto& meter : meters) {
     float power = meter.driver.readPower() * 1e-3;
-    sprintf(line + strlen(line), "\t\f12%.3fW", power);
+    sprintf(line + strlen(line), "\t\f12%.2fW", power);
   }
   status_screen->line_printf(3, "%s", line + 1);
 
   strcpy(line, "");
   for (auto& meter : meters) {
-    sprintf(line + strlen(line), "\t\f8%.1f\f6V \f8%.1f\f6mA",
+    sprintf(line + strlen(line), "\t\f8%.1f\f6V\2\f8%.1f\f6mA",
             meter.driver.readBusVoltage() * 1e-3,
             meter.driver.readCurrent());
   }
@@ -60,11 +62,11 @@ void setup() {
   blub_station_init("BLUB power station");
   for (auto& meter : meters) {
     if (meter.driver.begin(meter.i2c_address)) {
-      CL_NOTE("%s meter at 0x%x", meter.name, meter.i2c_address);
+      CL_NOTE("\"%s\" meter at 0x%x", meter.name, meter.i2c_address);
       meter.driver.setShunt(0.015, 10.0);
       meter.driver.setCurrentConversionTime(INA228_TIME_4120_us);
     } else {
-      CL_FATAL("No %s at 0x%x", meter.name, meter.i2c_address);
+      CL_FATAL("No \"%s\" meter at 0x%x", meter.name, meter.i2c_address);
     }
   }
 }
