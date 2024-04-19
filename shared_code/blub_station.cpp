@@ -30,7 +30,7 @@ class DummyStatus : public LittleStatus {
 
 class DummyXBee : public XBeeRadio {
   public:
-    virtual ApiFrame const* poll_api() override { return nullptr; }
+    virtual bool poll_api(ApiFrame*) override { return false; }
     virtual bool api_ready() override { return false; }
     virtual void send_api_frame(ApiFrame const&) override {}
     virtual HardwareSerial* raw_serial() const override { return nullptr; }

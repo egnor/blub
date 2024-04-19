@@ -9,10 +9,40 @@ class XBeeRadioDef : public XBeeRadio {
  public:
   XBeeRadioDef(HardwareSerial* s) : serial(s) {}
 
-  virtual ApiFrame const* poll_api() override {
+  virtual bool poll_api(ApiFrame* frame) override {
     auto const now = millis();
     auto const available = serial->available();
-    for (int i = 0; i < available; ++i) in_buf.push(serial->read());
+    for (int i = 0; i < available; ++i) {
+      in_buf.push(serial->read());
+      if (state == API_MODE && frame != nullptr) {
+        while (in_buf.size() > 1 && in_buf[0] != 0x7E) in_buf.shift();
+        if (frame == nullptr || in_buf.size() < 3) continue;
+
+        auto const size = in_buf[1] << 8 | in_buf[2];
+        if (size > MAX_API_PAYLOAD) {
+          CL_PROBLEM("Incoming XBee frame too big: %d", size);
+          in_buf.shift();
+          continue;
+        }
+
+        if (in_buf.size() < size + 4) continue;
+
+        uint8_t checksum = 0;
+        for (int i = 3; i < size + 4; ++i) checksum += in_buf[i];
+        if (checksum != 0xFF) {
+          CL_PROBLEM("Bad incoming XBee frame checksum: 0x%02x", checksum);
+          in_buf.shift();
+          continue;
+        }
+
+        for (int i = 0; i < 3; ++i) in_buf.shift();
+        frame->type = in_buf.shift();
+        frame->size = size - 1;
+        for (int i = 0; i < size - 1; ++i) frame->payload[i] = in_buf.shift();
+        in_buf.shift();
+        return true;
+      }
+    }
 
     auto const old_state = state;
     switch (state) {
@@ -103,7 +133,7 @@ class XBeeRadioDef : public XBeeRadio {
     if (state != old_state) {
       state_millis = now;
     }
-    return nullptr;
+    return false;
   }
 
   virtual bool api_ready() override {

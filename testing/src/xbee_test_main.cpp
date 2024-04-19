@@ -6,7 +6,9 @@
 #include "xbee_radio.h"
 
 void loop() {
-  xbee_radio->poll_api();
+  XBeeRadio::ApiFrame frame;
+  if (xbee_radio->poll_api(&frame)) {
+  }
 
   if (xbee_radio->raw_serial()) {
     status_screen->line_printf(1, "\f9Radio found");
