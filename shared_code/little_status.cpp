@@ -2,8 +2,7 @@
 
 #include <algorithm>
 #include <cstdarg>
-#include <string>
-#include <vector>
+#include <cstring>
 
 // This file only uses u8g2.h, but pio won't find the library based on that?
 #include <U8g2lib.h>
@@ -14,42 +13,54 @@ namespace {
 
 class LittleStatusDef : public LittleStatus {
  public:
-  virtual ~LittleStatusDef() {}
-
   LittleStatusDef(u8g2_t* u8g2) : u8g2(u8g2) {
     drawn_y = u8g2->height;  // Erase any existing content
-    rows.resize((drawn_y / 6) + 1);
-    for (auto& row : rows) row.top_y = -1;
+    rows_size = u8g2->height / 6 + 1;
+    rows = new Row[rows_size];
+    for (int i = 0; i < rows_size; ++i) rows[i].top_y = -1;
+  }
+
+  virtual ~LittleStatusDef() {
+    for (int i = 0; i < rows_size; ++i) {
+      delete[] rows[i].text;
+    }
+    delete[] rows;
+    delete[] temp;
   }
 
   virtual void line_printf(int line, char const* format, ...) override {
-    if (line < 0 || line >= rows.size()) return;
+    if (line < 0 || line >= rows_size) return;
     auto& row = rows[line];
 
-    temp.resize(temp.capacity());
     while (true) {
       va_list args;
       va_start(args, format);
-      auto const len = vsnprintf(temp.data(), temp.size(), format, args);
+      auto const len = vsnprintf(temp, temp_size, format, args);
       va_end(args);
 
-      if (len >= temp.size()) {
-        temp.resize(len + 1);
+      if (len >= temp_size) {
+        delete[] temp;
+        temp_size = len + 1;
+        temp = new char[temp_size];
       } else if (len < 0) {
         CL_PROBLEM("Bad LittleStatus format (line %d): %s", line, format);
         return;
       } else {
-        temp.resize(len);
         break;
       }
     }
 
-    if (temp != row.text) {
+    if (row.text == nullptr || strcmp(temp, row.text) != 0) {
       int const old_height = row.height;
-      row.text = temp;
       row.height = 0;
       row.baseline = 0;
-      text_chunk chunk;
+
+      delete[] row.text;
+      row.text = temp;
+      temp = nullptr;
+      temp_size = 0;
+
+      TextChunk chunk;
       while (next_chunk(row.text, &chunk)) {
         row.height = std::max(row.height, chunk.height);
         uint8_t const* font = font_for_height(chunk.height, chunk.bold);
@@ -63,7 +74,7 @@ class LittleStatusDef : public LittleStatus {
 
       int bot_y = draw_one_line(rows[line]);
       if (row.height != old_height) {
-        for (int i = line + 1; i < rows.size(); ++i) {
+        for (int i = line + 1; i < rows_size; ++i) {
           rows[i].top_y = bot_y;
           bot_y = draw_one_line(rows[i]);
         }
@@ -86,15 +97,15 @@ class LittleStatusDef : public LittleStatus {
   static constexpr int MIN_HEIGHT = 5;
   static constexpr int MAX_HEIGHT = 15;
 
-  struct row {
+  struct Row {
     int top_y = 0;
     int height = 0;
     int baseline = 0;
     int tabs = 0;
-    std::string text;
+    char* text = nullptr;
   };
 
-  struct text_chunk {
+  struct TextChunk {
     int begin = 0, end = 0;
     int tabs = 0;
     int height = 8;
@@ -103,11 +114,13 @@ class LittleStatusDef : public LittleStatus {
   };
 
   u8g2_t* const u8g2;
-  std::vector<row> rows;
-  std::string temp;
+  Row* rows = nullptr;
+  int rows_size = 0;
+  char* temp = nullptr;
+  int temp_size = 0;
   int drawn_y = 0;
 
-  int draw_one_line(row const& row) {
+  int draw_one_line(Row const& row) {
     if (row.height == 0) return row.top_y;
 
     u8g2_SetFontMode(u8g2, 1);  // For _tr fonts
@@ -116,28 +129,32 @@ class LittleStatusDef : public LittleStatus {
     int text_x = -10;
     int const text_y = row.top_y + row.baseline;
     int last_tabs = -1;
-    text_chunk chunk;
+    TextChunk chunk;
     while (next_chunk(row.text, &chunk)) {
       if (chunk.end <= chunk.begin) continue;
       uint8_t const* font = font_for_height(chunk.height, chunk.bold);
       if (font == nullptr) continue;
 
       u8g2_SetFont(u8g2, font);
-      int chunk_w = u8g2_GetGlyphWidth(u8g2, row.text[chunk.begin]);
+      int const first_w = u8g2_GetGlyphWidth(u8g2, row.text[chunk.begin]);
       int const first_offset = u8g2->glyph_x_offset;
-      for (int c = chunk.begin + 1; c < chunk.end; ++c) {
-        char const ch = row.text[c];
-        chunk_w += (ch <= 5) ? ch : u8g2_GetGlyphWidth(u8g2, ch);
-      }
 
+      int const prev_x = text_x;
       if (chunk.tabs > last_tabs) {
         int const tab_x = (chunk.tabs * u8g2->width) / (row.tabs + 1);
-        last_tabs = chunk.tabs;
         text_x = std::max(text_x, tab_x - first_offset);
+        last_tabs = chunk.tabs;
+      }
+
+      int end_x = text_x + first_w;
+      for (int c = chunk.begin + 1; c < chunk.end; ++c) {
+        char const ch = row.text[c];
+        end_x += (ch <= 5) ? ch : u8g2_GetGlyphWidth(u8g2, ch);
       }
 
       u8g2_SetDrawColor(u8g2, chunk.inverse ? 1 : 0);
-      u8g2_DrawBox(u8g2, text_x, row.top_y, chunk_w, row.height);
+      u8g2_DrawBox(u8g2, prev_x, row.top_y, end_x - prev_x, row.height);
+
       u8g2_SetDrawColor(u8g2, chunk.inverse ? 0 : 1);
       for (int c = chunk.begin; c < chunk.end; ++c) {
         char const ch = row.text[c];
@@ -155,25 +172,23 @@ class LittleStatusDef : public LittleStatus {
     return bot_y;
   }
 
-  static bool next_chunk(std::string const& text, text_chunk* chunk) {
-    int const size = text.size();
+  static bool next_chunk(char const* text, TextChunk* chunk) {
     chunk->begin = chunk->end;
     for (;;) {
-      for (chunk->end = chunk->begin; chunk->end < size; ++chunk->end) {
+      for (chunk->end = chunk->begin; text[chunk->end] != '\0'; ++chunk->end) {
         if (text[chunk->end] < 0x20 && text[chunk->end] > 5) break;
       }
       if (chunk->end > chunk->begin) return true;
-      if (chunk->end >= size) return false;
+      if (text[chunk->end] == '\0') return false;
 
       switch (text[chunk->begin++]) {
         case '\b':
           chunk->bold = !chunk->bold;
           break;
         case '\f':
-          if (chunk->begin < size &&
-              text[chunk->begin] >= '0' && text[chunk->begin] <= '9') {
+          if (text[chunk->begin] >= '0' && text[chunk->begin] <= '9') {
             chunk->height = text[chunk->begin++] - '0';
-            if (chunk->height * 10 <= MAX_HEIGHT && chunk->begin < size &&
+            if (chunk->height * 10 <= MAX_HEIGHT &&
                 text[chunk->begin] >= '0' && text[chunk->begin] <= '9') {
               chunk->height = chunk->height * 10 + (text[chunk->begin++] - '0');
             }
@@ -225,5 +240,6 @@ class LittleStatusDef : public LittleStatus {
 }  // namespace
 
 LittleStatus* make_little_status(u8g2_t* driver) {
+  CL_ASSERT(driver != nullptr);
   return new LittleStatusDef(driver);
 }

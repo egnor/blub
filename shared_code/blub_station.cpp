@@ -9,17 +9,31 @@
 
 #include "chatty_logging.h"
 #include "little_status.h"
+#include "xbee_radio.h"
 
-static constexpr int SCREEN_I2C_ADDR = 0x3D;
+static constexpr int SCREEN_I2C_ADDR = 0x3C;
 static constexpr int SCREEN_NRESET_PIN = 10;
+
+static constexpr int XBEE_NRESET_PIN = 11;
+static constexpr int TO_XBEE_PIN = 12;
+static constexpr int FROM_XBEE_PIN = 13;
 
 static u8g2_t screen_driver;
 LittleStatus* status_screen = nullptr;
+XBeeRadio* xbee_radio = nullptr;
 
 class DummyStatus : public LittleStatus {
   public:
     virtual void line_printf(int line, char const* format, ...) override {}
     virtual u8g2_t* raw_driver() const override { return nullptr; }
+};
+
+class DummyXBee : public XBeeRadio {
+  public:
+    virtual ApiFrame const* poll_api() override { return nullptr; }
+    virtual bool api_ready() override { return false; }
+    virtual void send_api_frame(ApiFrame const&) override {}
+    virtual HardwareSerial* raw_serial() const override { return nullptr; }
 };
 
 void blub_station_init(char const* name) {
@@ -38,15 +52,24 @@ void blub_station_init(char const* name) {
 
   CL_NOTE("💡 %s", name);
 
-  CL_SPAM("Waking screen (if present)");
+  CL_SPAM("Reset and wake screen and/or XBee (if present)");
   pinMode(SCREEN_NRESET_PIN, OUTPUT);
-  digitalWrite(SCREEN_NRESET_PIN, HIGH);
+  pinMode(XBEE_NRESET_PIN, OUTPUT);
+  digitalWrite(SCREEN_NRESET_PIN, LOW);
+  digitalWrite(XBEE_NRESET_PIN, LOW);
   delay(10);
+
+  pinMode(FROM_XBEE_PIN, INPUT);
+  pinMode(TO_XBEE_PIN, OUTPUT);
+  digitalWrite(TO_XBEE_PIN, HIGH);
+
+  digitalWrite(SCREEN_NRESET_PIN, HIGH);
+  digitalWrite(XBEE_NRESET_PIN, HIGH);
+  delay(100);
 
   CL_SPAM("I2C setup (SCL=%d SDA=%d)", SCL, SDA);
   if (!Wire.setSDA(SDA) || !Wire.setSCL(SCL)) {
-    CL_FATAL("I2C setup failed (SCL=%d SDA=%d)", SCL, SDA);
-    while (true) {}
+    CL_FATAL("Bad I2C pins (SCL=%d SDA=%d)", SCL, SDA);
   }
 
   Wire.begin();
@@ -72,5 +95,19 @@ void blub_station_init(char const* name) {
     u8g2_SetPowerSave(&screen_driver, 0);
     status_screen = make_little_status(&screen_driver);
     status_screen->line_printf(0, "\f9\b%s", name);
+    status_screen->line_printf(1, "\f9Running...");
+  }
+
+  // If the XBee is present, it will force the radio-to-CPU line high
+  pinMode(FROM_XBEE_PIN, INPUT_PULLDOWN);
+  if (digitalRead(FROM_XBEE_PIN) == HIGH) {
+    CL_SPAM("XBee found (from=%d to=%d)", FROM_XBEE_PIN, TO_XBEE_PIN);
+    if (!Serial1.setPinout(TO_XBEE_PIN, FROM_XBEE_PIN)) {
+      CL_FATAL("Bad XBee pins (TX=%d RX=%d)", TO_XBEE_PIN, FROM_XBEE_PIN);
+    }
+    xbee_radio = make_xbee_radio(&Serial1);
+  } else {
+    CL_SPAM("No XBee found (from=%d)", FROM_XBEE_PIN);
+    xbee_radio = new DummyXBee();
   }
 }

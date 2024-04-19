@@ -5,6 +5,7 @@
   "keywords": [],
   "build": { "srcDir": "." },
   "dependencies": {
-    "olikraus/U8g2": "^2.35.17"
+    "olikraus/U8g2": "^2.35.17",
+    "rlogiacco/CircularBuffer": "^1.4.0"
   }
 }

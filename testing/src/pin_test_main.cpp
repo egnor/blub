@@ -67,10 +67,16 @@ void run_uart_terminal() {
     int const dat_n = std::min(port.available(), Serial.availableForWrite());
     for (int i = 0; i < dat_n; ++i) {
       auto const dat = port.read();
-      if (dat != '\r' && dat != '\n') {
+      if (dat < 0) {
+        break;  // Sometimes we get spurious available() returns?
+      } else if (dat >= 0x20 && dat < 0x7F) {
         Serial.write(dat);
-      } else if (!(last_dat == '\r' && dat == '\n')) {
-        Serial.print("\r\n");
+      } else if (dat == '\r' || dat == '\n') {
+        if (!(last_dat == '\r' && dat == '\n')) {
+          Serial.print("\r\n");  // Turn any CR / LF / CR+LF into CR+LF
+        }
+      } else {
+        Serial.printf("<%02X>", dat);
       }
       last_dat = dat;
     }
@@ -78,8 +84,24 @@ void run_uart_terminal() {
     int const key_n = std::min(Serial.available(), port.availableForWrite());
     for (int i = 0; i < key_n; ++i) {
       auto const key = Serial.read();
-      if (last_key == 'U' - 0x40) {
+      if (key == 'U' - 0x40) {
+        Serial.print(
+           "\n<<< ctrl-U >>> UART terminal menu\n"
+           "  [9]600, [1]9200, [3]8400, [5]7600, 11520[0], [2]30400: set baud\n"
+           "  u: send literal ctrl-U\n"
+           "  q, x: exit UART terminal\n"
+           "  enter, escape: never mind\n"
+           "\n==> "
+        );
+      } else if (last_key == 'U' - 0x40) {
+        int new_baud = 0;
         switch (toupper(key)) {
+          case '9': new_baud = 9600; break;
+          case '1': new_baud = 19200; break;
+          case '3': new_baud = 38400; break;
+          case '5': new_baud = 57600; break;
+          case '0': new_baud = 115200; break;
+          case '2': new_baud = 230400; break;
           case 'Q':
           case 'X':
             Serial.printf("[%c] exit terminal\n", key);
@@ -107,16 +129,14 @@ void run_uart_terminal() {
             }
             break;
         }
+       
+        if (new_baud > 0) {
+          port.end();
+          port.begin(new_baud);
+          Serial.printf("[%c] set baud to %d\n", key, new_baud);
+        }
+
         Serial.print("\n");
-      } else if (key == 'U' - 0x40) {
-        Serial.print(
-           "\n<<< ctrl-U >>> UART terminal menu\n"
-           "  [9]600, [1]9200, [3]8400, [5]7600, 11520[0], [2]30400: set baud\n"
-           "  u: send literal ctrl-U\n"
-           "  q, x: exit UART terminal\n"
-           "  enter, escape: never mind\n"
-           "\n==> "
-        );
       } else if (key != '\r' && key != '\n') {
         port.write(key);
       } else if (!(last_key == '\r' && key == '\n')) {
@@ -237,11 +257,11 @@ void loop() {
            "  h: set pin to OUTPUT and HIGH (⚡, 💀 on conflict)\n"
            "  l: set pin to OUTPUT and LOW (🇴, 💥 on conflict)\n"
            "  [rgbw/cmyk/az]: drive LED strip (lower=once, UPPER=repeat)\n"
-           "  ctrl-C: use pin for I2C SCL (⏱️)\n"
-           "  ctrl-D: use pin for I2C SDA (📊)\n"
+           "  ctrl-C: use selected pin for I2C SCL (⏱️)\n"
+           "  ctrl-D: use selected pin for I2C SDA (📊)\n"
            "  ctrl-I: run I2C scanner\n"
-           "  ctrl-R: use pin for UART RX (⬅️)\n"
-           "  ctrl-X: use pin for UART TX (➡️)\n"
+           "  ctrl-R: use selected pin for UART RX (⬅️)\n"
+           "  ctrl-X: use selected pin for UART TX (➡️)\n"
            "  ctrl-U: run UART terminal\n"
            "\n"
         );
@@ -403,8 +423,12 @@ void loop() {
         strip_spam = false;
       }
 
-      pin_modes[pin_index] = toupper(ch);
-      pinMode(pins[pin_index], new_mode);
+      // Avoid glitching with unnecessary pinMode() calls
+      auto const new_mode_ch = toupper(ch);
+      if (pin_modes[pin_index] != new_mode_ch) {
+        pin_modes[pin_index] = new_mode_ch;
+        pinMode(pins[pin_index], new_mode);
+      }
       if (new_mode == OUTPUT) {
         auto const new_status = toupper(ch) == 'H' ? HIGH : LOW;
         digitalWrite(pins[pin_index], new_status);
@@ -413,7 +437,7 @@ void loop() {
     }
 
     if (strip_spam && strip != nullptr && strip->CanShow()) {
-      // Always rotate the buffer (though it only matters for the rainbow)
+      // Always rotate the LED buffer (though it only matters for the rainbow)
       uint8_t* const buf = strip->Pixels();
       int const buf_size = strip->PixelCount() * 3;
       uint8_t temp[3];

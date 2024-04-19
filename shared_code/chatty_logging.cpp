@@ -142,10 +142,10 @@ chatty_level get_chatty_file_level(char const* file) {
   if (chatty_output != nullptr) {
     chatty_output->print(millis() * 1e-3f, 3);
     switch (level) {
-      case CHATTY_FATAL: chatty_output->print(" 🕳️ no logging: "); break;
-      case CHATTY_PROBLEM: chatty_output->print(" 🛎️ errors only: "); break;
-      case CHATTY_NOTE: chatty_output->print(" 💬 normal log: "); break;
-      case CHATTY_SPAM: chatty_output->print(" 🗯️ verbose log: "); break;
+      case CHATTY_FATAL: chatty_output->print(" 🕳️ [no log] "); break;
+      case CHATTY_PROBLEM: chatty_output->print(" 🛎️ [log error+] "); break;
+      case CHATTY_NOTE: chatty_output->print(" 💬 [log note+] "); break;
+      case CHATTY_SPAM: chatty_output->print(" 🗯️ [log all] "); break;
     }
     chatty_output->println(file);
   }
