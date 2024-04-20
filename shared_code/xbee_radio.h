@@ -124,7 +124,7 @@ class XBeeRadio {
     static constexpr int TYPE = 0xAD;
     using Interface = RelayToInterface::Interface;
 
-    Interface interface = Interface::SERIAL_PORT;
+    Interface interface;
     uint8_t data[0];  // Packet-length terminated
   };
 
@@ -134,7 +134,7 @@ class XBeeRadio {
 
     uint8_t id;
     uint8_t component;
-    uint8_t flags = NO_FLAGS;
+    uint8_t flags;
     uint8_t payload[0];  // Packet-length terminated
   };
 

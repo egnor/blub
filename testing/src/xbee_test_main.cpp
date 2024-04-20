@@ -27,7 +27,7 @@ void loop() {
         break;
       }
       default:
-        CL_SPAM("Other payload type (0x%02x)", PayloadType::TYPE);
+        CL_SPAM("Other payload type (0x%02x)", incoming.type);
         break;
     }
   }
@@ -38,7 +38,7 @@ void loop() {
 
   if (millis() > next_status_update) {
     next_status_update += 500;
-    OutgoingFrame out = {};
+    XBeeRadio::OutgoingFrame out = {};
     out.type = out.payload.at_command.TYPE;
     out.payload.at_command = {1, {'S', 'Q'}};
     if (sizeof(out.payload.at_command) <= xbee_radio->send_space_available()) {
