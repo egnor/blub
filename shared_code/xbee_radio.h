@@ -4,35 +4,33 @@
 
 #include <stdint.h>
 
-#include <variant>
-
 namespace arduino { class HardwareSerial; }
 
 class XBeeRadio {
  public:
   //
-  // API frames (both for sending and receiving)
+  // API frame types (both for sending and receiving)
   //
 
   static constexpr int MAX_API_PAYLOAD = 1600;  // Can hold max packet size
 
   struct __attribute__((packed)) ATCommand {
     static constexpr int TYPE = 0x08;
-    uint8_t frame_id = 1;
-    char command[2] = {0, 0};
+    uint8_t frame_id;
+    char command[2];
     uint8_t value[0];  // Packet-length determined if present
   };
 
   struct __attribute__((packed)) ATCommandQueue {
     static constexpr int TYPE = 0x09;
-    uint8_t frame_id = 1;
-    char command[2] = {0, 0};
+    uint8_t frame_id;
+    char command[2];
     uint8_t value[0];  // Packet-length determined if present
   };
 
   struct __attribute__((packed)) ATCommandResponse {
     static constexpr int TYPE = 0x88;
-    enum Status : uint8_t { OK = 0, ERROR = 1, BAD_COMMAND = 2, BAD_PARAM = 3 };
+    enum Status : uint8_t { OK = 0, ERROR, BAD_COMMAND = 2, BAD_PARAM = 3 };
 
     uint8_t frame_id;
     char command[2];
@@ -43,10 +41,10 @@ class XBeeRadio {
 
   struct __attribute__((packed)) TransmitSMS {
     static constexpr int TYPE = 0x1F;
-    uint8_t frame_id = 1;
+    uint8_t frame_id;
     uint8_t reserved;
-    char phone_number[20] = "";  // NUL-terminated, numbers and + only
-    char message[0];             // Packet-length terminated
+    char phone_number[20];  // NUL-terminated, numbers and + only
+    char message[0];        // Packet-length terminated
   };
 
   struct __attribute__((packed)) ReceiveSMS {
@@ -57,13 +55,13 @@ class XBeeRadio {
 
   struct __attribute__((packed)) TransmitIP {
     static constexpr int TYPE = 0x20;
-    enum Protocol : uint8_t { UDP = 0, TCP = 1, TLS = 4 };
+    enum Protocol : uint8_t { UDP = 0, TCP, TLS = 4 };
     enum Option : uint8_t { NO_OPTIONS = 0, CLOSE_SOCKET = 2 };
 
-    uint8_t frame_id = 1;
-    uint32_t dest_ip = 0;
-    uint16_t dest_port = 0;
-    uint16_t source_port = 0;
+    uint8_t frame_id;
+    uint32_t dest_ip;
+    uint16_t dest_port;
+    uint16_t source_port;
     Protocol protocol = UDP;
     Option options = NO_OPTIONS;
     uint8_t data[0];  // Packet-length terminated
@@ -73,11 +71,11 @@ class XBeeRadio {
     static constexpr int TYPE = 0x23;
     using Option = TransmitIP::Option;
 
-    uint8_t frame_id = 1;
-    uint32_t dest_ip = 0;
-    uint16_t dest_port = 0;
-    uint16_t source_port = 0;
-    uint8_t tls_profile = 0;
+    uint8_t frame_id;
+    uint32_t dest_ip;
+    uint16_t dest_port;
+    uint16_t source_port;
+    uint8_t tls_profile;
     uint8_t options = Option::NO_OPTIONS;
     uint8_t data[0];  // Packet-length terminated
   };
@@ -104,7 +102,7 @@ class XBeeRadio {
   struct __attribute__((packed)) ModemStatus {
     static constexpr int TYPE = 0x8A;
     enum Status : uint8_t {
-      POWER_UP = 0, WATCHDOG_RESET = 1, REGISTERED = 2, UNREGISTERED = 3,
+      POWER_UP = 0, WATCHDOG_RESET, REGISTERED = 2, UNREGISTERED = 3,
       MANAGER_CONNECTED = 0x0E, MANAGER_DISCONNECTED = 0x0F,
       UPDATE_STARTED = 0x38, UPDATE_FAILED = 0x39, UPDATE_APPLYING = 0x3A,
     };
@@ -115,9 +113,9 @@ class XBeeRadio {
 
   struct __attribute__((packed)) RelayToInterface {
     static constexpr int TYPE = 0x2D;
-    enum Interface : uint8_t { SERIAL_PORT = 0, BLE = 1, PYTHON = 2 };
+    enum Interface : uint8_t { SERIAL_PORT = 0, BLE, PYTHON = 2 };
 
-    uint8_t frame_id = 1;
+    uint8_t frame_id;
     Interface interface = SERIAL_PORT;
     uint8_t data[0];  // Packet-length terminated
   };
@@ -132,10 +130,10 @@ class XBeeRadio {
 
   struct __attribute__((packed)) FirmwareUpdate {
     static constexpr int TYPE = 0x2B;
-    enum Flags : uint8_t { NO_FLAGS = 0, INITIAL = 1, FINAL = 2, CANCEL = 4 };
+    enum Flags : uint8_t { NO_FLAGS = 0, INITIAL, FINAL = 2, CANCEL = 4 };
 
-    uint8_t id = 0;
-    uint8_t component = 0;
+    uint8_t id;
+    uint8_t component;
     uint8_t flags = NO_FLAGS;
     uint8_t payload[0];  // Packet-length terminated
   };
@@ -158,15 +156,15 @@ class XBeeRadio {
       START_ONESHOT = 0, STOP_ONESHOT = 4, START_NMEA = 5, STOP_NMEA = 6
     };
 
-    uint8_t frame_id = 1;
+    uint8_t frame_id;
     Command command = START_ONESHOT;
-    uint16_t oneshot_timeout = 0;
+    uint16_t oneshot_timeout;
   };
 
   struct __attribute__((packed)) GnssResponse {
     static constexpr int TYPE = 0xBD;
     using Command = GnssRequest::Command;
-    enum Status : uint8_t { OK = 0, ERROR = 1 };
+    enum Status : uint8_t { OK = 0, ERROR };
 
     uint8_t frame_id;
     Command command;
@@ -180,7 +178,7 @@ class XBeeRadio {
 
   struct __attribute__((packed)) GnssOneShot {
     static constexpr int TYPE = 0xBF;
-    enum Status : uint8_t { OK = 0, INVALID = 1, TIMEOUT = 2, CANCELLED = 3 };
+    enum Status : uint8_t { OK = 0, INVALID, TIMEOUT = 2, CANCELLED = 3 };
 
     Status status;
     uint32_t lock_time;
@@ -190,31 +188,42 @@ class XBeeRadio {
     char const* status_text() const;
   };
 
-  struct __attribute__((packed)) GenericPayload {
-    static constexpr int TYPE = -1;  // Not a real frame type
-    uint8_t data[MAX_API_PAYLOAD];
-  };
-
   // TODO: BLE Unlock
   // TODO: Socket commands
   // TODO: Filesystem commands
 
   struct OutgoingFrame {
-    std::variant<
-      ATCommand, ATCommandQueue, TransmitSMS, TransmitIP, TransmitTLS,
-      RelayToInterface, FirmwareUpdate,
-      GnssRequest, GenericPayload
-    > payload;
-    int extra_size = 0;  // Bytes in addition to the basic payload type
+    int type;
+    union {
+      ATCommand at_command;
+      ATCommandQueue at_command_queue;
+      TransmitSMS transmit_sms;
+      TransmitIP transmit_ip;
+      TransmitTLS transmit_tls;
+      RelayToInterface relay_to_interface;
+      FirmwareUpdate firmware_update;
+      GnssRequest gnss_request;
+      uint8_t raw_bytes[MAX_API_PAYLOAD];
+    } payload;
+    int extra_size;  // Size (in bytes) any array at the tail of the payload
   };
 
   struct IncomingFrame {
-    std::variant<
-      ATCommandResponse, ReceiveSMS, ReceiveIP, TransmitStatus, ModemStatus,
-      RelayFromInterface, FirmwareUpdateResponse,
-      GnssResponse, GnssNmea, GnssOneShot, GenericPayload
-    > payload;
-    int extra_size;  // Bytes in addition to the basic payload type
+    int type;
+    union {
+      ATCommandResponse at_command_response;
+      ReceiveSMS receive_sms;
+      ReceiveIP receive_ip;
+      TransmitStatus transmit_status;
+      ModemStatus modem_status;
+      RelayFromInterface relay_from_interface;
+      FirmwareUpdateResponse firmware_update_response;
+      GnssResponse gnss_response;
+      GnssNmea gnss_nmea;
+      GnssOneShot gnss_one_shot;
+      uint8_t raw_bytes[MAX_API_PAYLOAD];
+    } payload;
+    int extra_size;  // Size (in bytes) any array at the tail of the payload
   };
 
   virtual ~XBeeRadio() = default;

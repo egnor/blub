@@ -46,30 +46,34 @@ class XBeeRadioDef : public XBeeRadio {
           continue;
         }
 
-        auto const payload_type = in_buf[3];
-        uint8_t* bytes = setup_payload(frame, payload_type, payload_size);
-        if (bytes == nullptr) {
-          CL_SPAM("Unknown incoming XBee frame type: 0x%02x", payload_type);
+        auto const base_size = base_payload_size(in_buf[3]);
+        if (base_size <= 0) {
+          CL_SPAM("Unknown incoming XBee frame type: 0x%02x", frame->type);
           for (int i = 0; i < payload_size + 5; ++i) in_buf.shift();
           continue;
         }
-        if (frame->extra_size < 0) {
+
+        if (payload_size < base_size) {
           CL_PROBLEM(
               "Incoming XBee frame (0x%02x) too short (%d < %d), ignoring",
-              payload_type, payload_size, payload_size - frame->extra_size);
+              frame->type, payload_size, base_size);
           in_buf.shift();
           continue;
         }
 
+        frame->type = in_buf[3];
+        frame->extra_size = payload_size - base_size;
+        auto* bytes = reinterpret_cast<uint8_t*>(&frame->payload);
+
         for (int i = 0; i < 4; ++i) in_buf.shift();  // 0x7E, size, type
         for (int i = 0; i < payload_size; ++i) {
-          bytes[i] = in_buf.shift();                 // Payload (without type)
+          bytes[i] = in_buf.shift();                 // Payload
         }
         in_buf.shift();                              // Checksum
 
         CL_SPAM(
-            "Incoming XBee frame (0x%02x) size=%d+%d=%d", payload_type,
-            payload_size - frame->extra_size, frame->extra_size, payload_size);
+            "Incoming XBee frame (0x%02x) size=%d+%d=%d",
+            frame->type, base_size, frame->extra_size, payload_size);
         return true;
       }
     }
@@ -185,24 +189,30 @@ class XBeeRadioDef : public XBeeRadio {
       return;
     }
 
-    auto const handler = [] (auto const& payload) {
-      return std::make_tuple(
-          payload.TYPE, sizeof(payload),
-          reinterpret_cast<uint8_t const*>(&payload));
-    };
-
-    auto const [type, base_size, bytes] = std::visit(handler, frame.payload);
-    auto const payload_size = base_size + frame.extra_size;
-    if (payload_size > MAX_API_PAYLOAD) {
-      CL_PROBLEM(
-          "Outgoing XBee frame too big (%d > %d), dropping",
-          payload_size, MAX_API_PAYLOAD);
+    auto const base_size = base_payload_size(frame.type);
+    if (base_size <= 0) {
+      CL_PROBLEM("Bad outgoing XBee frame type (0x%02x), dropping", frame.type);
       return;
     }
+
+    auto const payload_size = base_size + frame.extra_size;
+    if (payload_size < base_size) {
+      CL_PROBLEM(
+          "Outgoing XBee frame (0x%02x) too short (%d < %d), dropping",
+          frame.type, payload_size, base_size);
+      return;
+    }
+    if (payload_size > MAX_API_PAYLOAD) {
+      CL_PROBLEM(
+          "Outgoing XBee frame (0x%02x) too big (%d > %d), dropping",
+          frame.type, payload_size, MAX_API_PAYLOAD);
+      return;
+    }
+
     auto const available = send_space_available();
     if (payload_size > available) {
       CL_PROBLEM(
-          "Outgoing XBee frame too big for buffer (%d > %d)",
+          "Outgoing XBee frame too big for buffer (%d > %d), dropping",
           payload_size, available);
       return;
     }
@@ -211,17 +221,19 @@ class XBeeRadioDef : public XBeeRadio {
     out_buf.push(0x7E);                       // Start delimiter
     out_buf.push((payload_size + 1) >> 8);    // Length (incl. type) MSB
     out_buf.push((payload_size + 1) & 0xFF);  // Length (incl. type) LSB
-    out_buf.push(type);                       // Frame type
-    uint8_t checksum = type;
+    out_buf.push(frame.type);                 // Frame type
+
+    uint8_t checksum = frame.type;;
+    auto const* bytes = reinterpret_cast<uint8_t const*>(&frame.payload);
     for (int i = 0; i < payload_size; ++i) {
       out_buf.push(bytes[i]);
       checksum += bytes[i];
     }
-    out_buf.push(0xFF - checksum);      // Checksum
+    out_buf.push(0xFF - checksum);
 
     CL_SPAM(
-        "Outgoing XBee frame (0x%02x) size=%d+%d=%d", type,
-        base_size, frame.extra_size, payload_size);
+        "Outgoing XBee frame (0x%02x) size=%d+%d=%d",
+        frame.type, base_size, frame.extra_size, payload_size);
   }
 
   virtual HardwareSerial* raw_serial() const override {
@@ -258,21 +270,30 @@ class XBeeRadioDef : public XBeeRadio {
     return true;
   }
 
-  template <int index = 0>
-  uint8_t* setup_payload(IncomingFrame* frame, int wire_type, int wire_size) {
-    using VariantType = decltype(frame->payload);
-    if constexpr (index >= std::variant_size_v<VariantType>) {
-      return nullptr;
-    } else {
-      using PayloadType = std::variant_alternative_t<index, VariantType>;
-      if (wire_type != PayloadType::TYPE) {
-        return setup_payload<index + 1>(frame, wire_type, wire_size);
-      } else {
-        frame->extra_size = wire_size - sizeof(PayloadType);
-        frame->payload.emplace<index>();
-        return reinterpret_cast<uint8_t*>(&std::get<index>(frame->payload));
-      }
+  int base_payload_size(uint8_t payload_type) {
+    switch (payload_type) {
+#define S(x) case x::TYPE: return sizeof(x)
+      S(ATCommand);
+      S(ATCommandQueue);
+      S(ATCommandResponse);
+      S(TransmitSMS);
+      S(ReceiveSMS);
+      S(TransmitIP);
+      S(TransmitTLS);
+      S(ReceiveIP);
+      S(TransmitStatus);
+      S(ModemStatus);
+      S(RelayToInterface);
+      S(RelayFromInterface);
+      S(FirmwareUpdate);
+      S(FirmwareUpdateResponse);
+      S(GnssRequest);
+      S(GnssResponse);
+      S(GnssNmea);
+      S(GnssOneShot);
+#undef S
     }
+    return -1;  // Type not recognized
   }
 };
 

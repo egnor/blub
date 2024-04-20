@@ -7,28 +7,29 @@
 
 static long next_status_update = 0;
 
-void handle_payload(const XBeeRadio::ModemStatus& modem) {
-  CL_REMARK("ModemStatus: %s", modem.status_text());
-  status_screen->line_printf(3, "\f9Modem: %s", modem.status_text());
-}
-
-void handle_payload(const XBeeRadio::ATCommandResponse& atr) {
-  CL_REMARK(
-      "ATResponse (%c%c): %s = %d %d",
-      atr.command[0], atr.command[1], atr.status_text(),
-      atr.value[0], atr.value[1]);
-}
-
-template <typename PayloadType>
-void handle_payload(PayloadType const& payload) {
-  CL_SPAM("Other payload type (0x%02x)", PayloadType::TYPE);
-}
-
 void loop() {
-  XBeeRadio::IncomingFrame frame;
-  while (xbee_radio->poll_api(&frame)) {
-    auto const handler = [](auto const& payload) { handle_payload(payload); };
-    std::visit(handler, frame.payload);
+  XBeeRadio::IncomingFrame incoming;
+  while (xbee_radio->poll_api(&incoming)) {
+    switch (incoming.type) {
+      case XBeeRadio::ModemStatus::TYPE: {
+        auto const* text = incoming.payload.modem_status.status_text();
+        CL_REMARK("ModemStatus: %s", text);
+        status_screen->line_printf(3, "\f9Modem: %s", text);
+        break;
+      }
+      case XBeeRadio::ATCommandResponse::TYPE: {
+        auto const& atr = incoming.payload.at_command_response;
+        CL_REMARK(
+            "ATResponse (%c%c): %s = %d %d",
+            atr.command[0], atr.command[1], atr.status_text(),
+            incoming.extra_size >= 1 ? atr.value[0] : -1,
+            incoming.extra_size >= 2 ? atr.value[1] : -1);
+        break;
+      }
+      default:
+        CL_SPAM("Other payload type (0x%02x)", PayloadType::TYPE);
+        break;
+    }
   }
 
   if (xbee_radio->send_space_available() > 0) {
@@ -37,9 +38,11 @@ void loop() {
 
   if (millis() > next_status_update) {
     next_status_update += 500;
-    XBeeRadio::ATCommand at_command{1, {'S', 'Q'}};
-    if (sizeof(at_command) <= xbee_radio->send_space_available()) {
-      xbee_radio->send_api_frame({at_command});
+    OutgoingFrame out = {};
+    out.type = out.payload.at_command.TYPE;
+    out.payload.at_command = {1, {'S', 'Q'}};
+    if (sizeof(out.payload.at_command) <= xbee_radio->send_space_available()) {
+      xbee_radio->send_api_frame(out);
     }
   }
 }
