@@ -5,7 +5,7 @@
 #include "little_status.h"
 
 void loop() {
-  CL_NOTE("LOOP");
+  CL_SPAM("LOOP");
   status_screen->line_printf(1, "\f6six\b(6)\b \f7seven\b(7)\b \f8eight\b(8)");
   status_screen->line_printf(2, "\f9nine\b(9)\b \f11el.\b(11)\b \f12tw.\b(12)");
   status_screen->line_printf(3, "\f14fourt.\b(14)\b \f15fift.\b(15)");

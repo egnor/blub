@@ -26,7 +26,7 @@ void chatty_log(chatty_level level, char const* fmt, ...) {
   switch (level) {
     case CHATTY_FATAL: chatty_output->print(" 💥 FATAL (rebooting): "); break;
     case CHATTY_PROBLEM: chatty_output->print(" 🔥 "); break;
-    case CHATTY_NOTE: chatty_output->print(" "); break;
+    case CHATTY_REMARK: chatty_output->print(" "); break;
     case CHATTY_SPAM: chatty_output->print(" 🕸️ "); break;
   }
 
@@ -112,21 +112,22 @@ static chatty_level find_file_level(char const* file) {
   }
 
   if ((len == 4 && strncasecmp(part, "note", 4) == 0) ||
-             (len == 6 && strncasecmp(part, "notice", 6) == 0) ||
-             (len == 7 && strncasecmp(part, "notable", 7) == 0) ||
-             (len == 4 && strncasecmp(part, "info", 4) == 0)) {
-    return CHATTY_NOTE;
+      (len == 6 && strncasecmp(part, "notice", 6) == 0) ||
+      (len == 7 && strncasecmp(part, "notable", 7) == 0) ||
+      (len == 4 && strncasecmp(part, "info", 4) == 0) ||
+      (len == 4 && strncasecmp(part, "remark", 4) == 0)) {
+    return CHATTY_REMARK;
   }
 
   if ((len == 7 && strncasecmp(part, "problem", 7) == 0) ||
-             (len == 7 && strncasecmp(part, "warning", 7) == 0) ||
-             (len == 5 && strncasecmp(part, "error", 5) == 0)) {
+      (len == 7 && strncasecmp(part, "warning", 7) == 0) ||
+      (len == 5 && strncasecmp(part, "error", 5) == 0)) {
     return CHATTY_PROBLEM;
   }
 
   if ((len == 5 && strncasecmp(part, "fatal", 5) == 0) ||
-             (len == 5 && strncasecmp(part, "panic", 5) == 0) ||
-             (len == 4 && strncasecmp(part, "none", 4) == 0)) {
+      (len == 5 && strncasecmp(part, "panic", 5) == 0) ||
+      (len == 4 && strncasecmp(part, "none", 4) == 0)) {
     return CHATTY_FATAL;
   }
 
@@ -143,9 +144,9 @@ chatty_level get_chatty_file_level(char const* file) {
     chatty_output->print(millis() * 1e-3f, 3);
     switch (level) {
       case CHATTY_FATAL: chatty_output->print(" 🕳️ [no log] "); break;
-      case CHATTY_PROBLEM: chatty_output->print(" 🛎️ [log error+] "); break;
-      case CHATTY_NOTE: chatty_output->print(" 💬 [log note+] "); break;
-      case CHATTY_SPAM: chatty_output->print(" 🗯️ [log all] "); break;
+      case CHATTY_PROBLEM: chatty_output->print(" 🛎️ [error+] "); break;
+      case CHATTY_REMARK: chatty_output->print(" 💬 [remark+] "); break;
+      case CHATTY_SPAM: chatty_output->print(" 🗯️ [all] "); break;
     }
     chatty_output->println(file);
   }

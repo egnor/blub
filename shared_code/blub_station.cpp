@@ -30,9 +30,9 @@ class DummyStatus : public LittleStatus {
 
 class DummyXBee : public XBeeRadio {
   public:
-    virtual bool poll_api(ApiFrame*) override { return false; }
-    virtual bool api_ready() override { return false; }
-    virtual void send_api_frame(ApiFrame const&) override {}
+    virtual bool poll_api(IncomingFrame*) override { return false; }
+    virtual int send_space_available() const override { return 0; }
+    virtual void send_api_frame(OutgoingFrame const&) override {}
     virtual HardwareSerial* raw_serial() const override { return nullptr; }
 };
 
@@ -50,7 +50,7 @@ void blub_station_init(char const* name) {
     (!usb_host_seen && (millis() - start < 500))
   );
 
-  CL_NOTE("💡 %s", name);
+  CL_REMARK("💡 %s", name);
 
   CL_SPAM("Reset and wake screen and/or XBee (if present)");
   pinMode(SCREEN_NRESET_PIN, OUTPUT);
