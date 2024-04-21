@@ -7,44 +7,60 @@
 #include "xbee_radio.h"
 #include "xbee_monitor.h"
 
-XBeeMonitor* monitor = nullptr;
+static XBeeMonitor* monitor = nullptr;
+
+static long last_loop_millis = 0;
 
 void loop() {
   using namespace XBeeApi;
   static Frame frame;
 
-  while (xbee_radio->poll_api(&frame)) {
-    if (monitor->maybe_handle_frame(frame)) continue;
+  auto const loop_millis = millis();
 
-    int extra_size;
-    if (auto* modem = frame.decode_as<ModemStatus>()) {
-      auto const* text = modem->status_text();
-      CL_NOTICE("ModemStatus: %s", text);
-      status_screen->line_printf(3, "\f9Modem: %s", text);
-    } else {
-      CL_NOTICE("Other payload type (0x%02x)", frame.type);
-    }
+  while (xbee_radio->poll_api(&frame)) {
+    monitor->maybe_handle_frame(frame);
   }
 
   while (monitor->maybe_emit_frame(xbee_radio->send_available(), &frame)) {
     xbee_radio->send_api_frame(frame);
   }
 
-  if (xbee_radio->send_available() > 0) {
-    status_screen->line_printf(2, "\f9Radio API ready");
+  auto const& st = monitor->status();
+  if (!xbee_radio->raw_serial()) {
+    status_screen->line_printf(1, "\f9No XBee found");
+  } else if (!st.hardware_ver) {
+    status_screen->line_printf(1, "\f9XBee API starting");
+  } else {
+    status_screen->line_printf(
+        1, "\f9XBee %04x / %05x", st.hardware_ver, st.firmware_ver);
+    status_screen->line_printf(
+        2, "\f9%s / %s / %s",
+        st.network_operator, st.operating_apn,
+        st.technology == XBeeMonitor::UNKNOWN_TECH ? "" : st.technology_text());
+    if (st.assoc_status == XBeeMonitor::CONNECTED) {
+      auto const ip = st.ip_address;
+      status_screen->line_printf(
+          3, "\f9P%.1f Q%.1f %d.%d.%d.%d",
+          st.received_power, st.received_quality,
+          ip >> 24, (ip >> 16) & 0xff, (ip >> 8) & 0xff, ip & 0xff);
+    } else {
+      status_screen->line_printf(
+          3, "\f9P%.1f Q%.1f %s",
+          st.received_power, st.received_quality, st.assoc_text());
+    }
   }
 
+  if (last_loop_millis > 0) {
+    auto const delay = loop_millis - last_loop_millis;
+    if (delay > 2)
+      CL_NOTICE("loop time %ld ms", loop_millis - last_loop_millis);
+  }
+
+  last_loop_millis = loop_millis;
 }
 
 void setup() {
   while (!Serial.dtr() && millis() < 2000) delay(10);
   blub_station_init("BLUB XBee Test");
-
-  if (xbee_radio->raw_serial()) {
-    status_screen->line_printf(1, "\f9Radio found");
-  } else {
-    status_screen->line_printf(1, "\f9Radio NOT found");
-  }
-
   monitor = make_xbee_monitor();
 }

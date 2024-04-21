@@ -103,8 +103,9 @@ void blub_station_init(char const* name) {
   if (digitalRead(FROM_XBEE_PIN) == HIGH) {
     CL_SPAM("XBee found (from=%d to=%d)", FROM_XBEE_PIN, TO_XBEE_PIN);
     if (!Serial1.setPinout(TO_XBEE_PIN, FROM_XBEE_PIN)) {
-      CL_FATAL("Bad XBee pins (TX=%d RX=%d)", TO_XBEE_PIN, FROM_XBEE_PIN);
+      CL_FATAL("XBee pinout error (TX=%d RX=%d)", TO_XBEE_PIN, FROM_XBEE_PIN);
     }
+    if (!Serial1.setFIFOSize(512)) CL_FATAL("XBee FIFO error");
     xbee_radio = make_xbee_radio(&Serial1);
   } else {
     CL_SPAM("No XBee found (from=%d)", FROM_XBEE_PIN);
