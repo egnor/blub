@@ -1,0 +1,5 @@
+- change logging to use tagging instead of filenames
+- better approach to two letter AT commands?
+- IP address as four-byte array
+- byte order swapping in XBee API frames
+- integrate Core MQTT!
