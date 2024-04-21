@@ -8,7 +8,7 @@ static Print* chatty_output = nullptr;
 #define CHATTY_CONFIG note
 #endif
 
-#define STRINGIFY2(x) #x
+#define STRINGIFY2(x...) #x
 #define STRINGIFY(x) STRINGIFY2(x)
 static char const* const config = STRINGIFY(CHATTY_CONFIG);
 #undef STRINGIFY
@@ -26,7 +26,7 @@ void chatty_log(chatty_level level, char const* fmt, ...) {
   switch (level) {
     case CHATTY_FATAL: chatty_output->print(" 💥 FATAL (rebooting): "); break;
     case CHATTY_PROBLEM: chatty_output->print(" 🔥 "); break;
-    case CHATTY_REMARK: chatty_output->print(" "); break;
+    case CHATTY_NOTICE: chatty_output->print(" "); break;
     case CHATTY_SPAM: chatty_output->print(" 🕸️ "); break;
   }
 
@@ -111,12 +111,13 @@ static chatty_level find_file_level(char const* file) {
     return CHATTY_SPAM;
   }
 
-  if ((len == 4 && strncasecmp(part, "note", 4) == 0) ||
-      (len == 6 && strncasecmp(part, "notice", 6) == 0) ||
-      (len == 7 && strncasecmp(part, "notable", 7) == 0) ||
+  if ((len == 4 && strncasecmp(part, "default", 7) == 0) ||
       (len == 4 && strncasecmp(part, "info", 4) == 0) ||
-      (len == 4 && strncasecmp(part, "remark", 4) == 0)) {
-    return CHATTY_REMARK;
+      (len == 4 && strncasecmp(part, "normal", 6) == 0) ||
+      (len == 4 && strncasecmp(part, "note", 4) == 0) ||
+      (len == 6 && strncasecmp(part, "notice", 6) == 0) ||
+      (len == 7 && strncasecmp(part, "notable", 7) == 0)) {
+    return CHATTY_NOTICE;
   }
 
   if ((len == 7 && strncasecmp(part, "problem", 7) == 0) ||
@@ -145,7 +146,7 @@ chatty_level get_chatty_file_level(char const* file) {
     switch (level) {
       case CHATTY_FATAL: chatty_output->print(" 🕳️ [no log] "); break;
       case CHATTY_PROBLEM: chatty_output->print(" 🛎️ [error+] "); break;
-      case CHATTY_REMARK: chatty_output->print(" 💬 [remark+] "); break;
+      case CHATTY_NOTICE: chatty_output->print(" 💬 [notice+] "); break;
       case CHATTY_SPAM: chatty_output->print(" 🗯️ [all] "); break;
     }
     chatty_output->println(file);

@@ -32,7 +32,7 @@ void loop() {
   for (auto& meter : meters) {
     if (meter.driver) {
       sprintf(line + strlen(line), "\t\f9\b%s\b", meter.name);
-      CL_REMARK(
+      CL_NOTICE(
           "%s: %.1fV %.1fmA [%.3fmVs] %.0fmW %.3fJ %.1fC", meter.name,
           meter.driver->readBusVoltage() * 1e-3,
           meter.driver->readCurrent(),
@@ -41,7 +41,7 @@ void loop() {
           meter.driver->readEnergy(),
           meter.driver->readDieTemp());
     } else {
-      CL_REMARK("%s: not detected at startup", meter.name);
+      CL_NOTICE("%s: not detected at startup", meter.name);
     }
   }
   status_screen->line_printf(2, "%s", line + 1);
@@ -58,9 +58,14 @@ void loop() {
   strcpy(line, "");
   for (auto& meter : meters) {
     if (!meter.driver) continue;
-    sprintf(line + strlen(line), "\t\f8%.1f\f6V\2\f8%.0f\f6mA",
-            meter.driver->readBusVoltage() * 1e-3,
-            meter.driver->readCurrent());
+    auto const milliamps = meter.driver->readCurrent();
+    if (milliamps >= -999 && milliamps <= 999) {
+      sprintf(line + strlen(line), "\t\f8%.1f\f6V\2\f8%.0f\f6mA",
+              meter.driver->readBusVoltage() * 1e-3, milliamps);
+    } else {
+      sprintf(line + strlen(line), "\t\f8%.1f\f6V\2\f8%.1f\f6A",
+              meter.driver->readBusVoltage() * 1e-3, milliamps * 1e-3);
+    }
   }
   status_screen->line_printf(4, "%s", line + 1);
 
@@ -72,7 +77,7 @@ void setup() {
   for (auto& meter : meters) {
     meter.driver.emplace();
     if (meter.driver->begin(meter.i2c_address)) {
-      CL_REMARK("\"%s\" meter at 0x%x", meter.name, meter.i2c_address);
+      CL_NOTICE("\"%s\" meter at 0x%x", meter.name, meter.i2c_address);
       meter.driver->setShunt(0.015, 10.0);
       meter.driver->setCurrentConversionTime(INA228_TIME_4120_us);
     } else {

@@ -11,7 +11,7 @@ class XBeeRadioDef : public XBeeRadio {
  public:
   XBeeRadioDef(HardwareSerial* s) : serial(s) {}
 
-  virtual bool poll_api(IncomingFrame* frame) override {
+  virtual bool poll_api(XBeeApi::Frame* frame) override {
     auto const now = millis();
     auto const to_read = serial->available();
     for (int i = 0; i < to_read; ++i) {
@@ -23,57 +23,37 @@ class XBeeRadioDef : public XBeeRadio {
       if (state == API_MODE && frame != nullptr) {
         // Format: <0x7E> <len MSB> <len LSB> <type>+<payload>... <checksum>
         while (in_buf.size() > 1 && in_buf[0] != 0x7E) in_buf.shift();
-        if (frame == nullptr || in_buf.size() < 3) continue;
+        if (frame == nullptr || in_buf.size() < 5) continue;
 
-        auto const payload_size = (in_buf[1] << 8 | in_buf[2]) - 1;
-        if (payload_size > MAX_API_PAYLOAD) {
+        auto const size = (in_buf[1] << 8 | in_buf[2]) - 1;  // Without type
+        if (size > XBeeApi::MAX_PAYLOAD) {
           CL_PROBLEM(
               "Incoming XBee frame too big (%d > %d), ignoring",
-              payload_size, MAX_API_PAYLOAD);
+              size, XBeeApi::MAX_PAYLOAD);
           in_buf.shift();
           continue;
         }
 
-        if (in_buf.size() < payload_size + 5) continue;
+        if (in_buf.size() < size + 5) continue;
 
         uint8_t checksum = 0;
-        for (int i = 3; i < payload_size + 5; ++i) checksum += in_buf[i];
+        for (int i = 3; i < size + 5; ++i) checksum += in_buf[i];
         if (checksum != 0xFF) {
           CL_PROBLEM(
-              "Bad incoming XBee checksum (0x%02x != 0xFF), ignoring frame",
+              "Bad incoming XBee frame checksum (0x%02x != 0xFF), ignoring",
               checksum);
           in_buf.shift();
           continue;
         }
 
-        auto const base_size = base_payload_size(in_buf[3]);
-        if (base_size <= 0) {
-          CL_SPAM("Unknown incoming XBee frame type: 0x%02x", frame->type);
-          for (int i = 0; i < payload_size + 5; ++i) in_buf.shift();
-          continue;
-        }
-
-        if (payload_size < base_size) {
-          CL_PROBLEM(
-              "Incoming XBee frame (0x%02x) too short (%d < %d), ignoring",
-              frame->type, payload_size, base_size);
-          in_buf.shift();
-          continue;
-        }
-
         frame->type = in_buf[3];
-        frame->extra_size = payload_size - base_size;
-        auto* bytes = reinterpret_cast<uint8_t*>(&frame->payload);
+        frame->payload_size = size;
 
         for (int i = 0; i < 4; ++i) in_buf.shift();  // 0x7E, size, type
-        for (int i = 0; i < payload_size; ++i) {
-          bytes[i] = in_buf.shift();                 // Payload
-        }
+        for (int i = 0; i < size; ++i) frame->payload[i] = in_buf.shift();
         in_buf.shift();                              // Checksum
 
-        CL_SPAM(
-            "Incoming XBee frame (0x%02x) size=%d+%d=%d",
-            frame->type, base_size, frame->extra_size, payload_size);
+        CL_SPAM("Incoming XBee frame (0x%02x) %d bytes", frame->type, size);
         return true;
       }
     }
@@ -179,61 +159,47 @@ class XBeeRadioDef : public XBeeRadio {
     return false;
   }
 
-  virtual int send_space_available() const override {
-    return state == API_MODE ? out_buf.available() - 5 : 0;
+  virtual int send_available() const override {
+    return state == API_MODE ? out_buf.available() : 0;
   }
 
-  virtual void send_api_frame(OutgoingFrame const& frame) override {
+  virtual void send_api_frame(XBeeApi::Frame const& frame) override {
     if (state != API_MODE) {
       CL_PROBLEM("Outgoing XBee frame (0x%02x) before API ready, dropping");
       return;
     }
 
-    auto const base_size = base_payload_size(frame.type);
-    if (base_size <= 0) {
-      CL_PROBLEM("Bad outgoing XBee frame type (0x%02x), dropping", frame.type);
-      return;
-    }
-
-    auto const payload_size = base_size + frame.extra_size;
-    if (payload_size < base_size) {
-      CL_PROBLEM(
-          "Outgoing XBee frame (0x%02x) too short (%d < %d), dropping",
-          frame.type, payload_size, base_size);
-      return;
-    }
-    if (payload_size > MAX_API_PAYLOAD) {
+    if (frame.payload_size > XBeeApi::MAX_PAYLOAD) {
       CL_PROBLEM(
           "Outgoing XBee frame (0x%02x) too big (%d > %d), dropping",
-          frame.type, payload_size, MAX_API_PAYLOAD);
+          frame.type, frame.payload_size, XBeeApi::MAX_PAYLOAD);
       return;
     }
 
-    auto const available = send_space_available();
-    if (payload_size > available) {
+    auto const available = send_available();
+    if (frame.payload_size + 5 > available) {
       CL_PROBLEM(
           "Outgoing XBee frame too big for buffer (%d > %d), dropping",
-          payload_size, available);
+          frame.payload_size + 5, available);
       return;
     }
 
     // Format: <0x7E> <len MSB> <len LSB> <type>+<payload>... <checksum>
-    out_buf.push(0x7E);                       // Start delimiter
-    out_buf.push((payload_size + 1) >> 8);    // Length (incl. type) MSB
-    out_buf.push((payload_size + 1) & 0xFF);  // Length (incl. type) LSB
-    out_buf.push(frame.type);                 // Frame type
+    out_buf.push(0x7E);                             // Start delimiter
+    out_buf.push((frame.payload_size + 1) >> 8);    // Length (incl. type) MSB
+    out_buf.push((frame.payload_size + 1) & 0xFF);  // Length (incl. type) LSB
+    out_buf.push(frame.type);                       // Frame type
 
-    uint8_t checksum = frame.type;;
-    auto const* bytes = reinterpret_cast<uint8_t const*>(&frame.payload);
-    for (int i = 0; i < payload_size; ++i) {
-      out_buf.push(bytes[i]);
-      checksum += bytes[i];
+    uint8_t checksum = frame.type;
+    for (int i = 0; i < frame.payload_size; ++i) {
+      out_buf.push(frame.payload[i]);
+      checksum += frame.payload[i];
     }
     out_buf.push(0xFF - checksum);
 
     CL_SPAM(
-        "Outgoing XBee frame (0x%02x) size=%d+%d=%d",
-        frame.type, base_size, frame.extra_size, payload_size);
+        "Outgoing XBee frame (0x%02x) %d bytes",
+        frame.type, frame.payload_size);
   }
 
   virtual HardwareSerial* raw_serial() const override {
@@ -256,8 +222,8 @@ class XBeeRadioDef : public XBeeRadio {
   HardwareSerial* serial = nullptr;
   Status state = START;
   long state_millis = 0;
-  CircularBuffer<uint8_t, MAX_API_PAYLOAD + 4> in_buf;
-  CircularBuffer<uint8_t, MAX_API_PAYLOAD + 4> out_buf;
+  CircularBuffer<uint8_t, XBeeApi::MAX_PAYLOAD + 5> in_buf;
+  CircularBuffer<uint8_t, XBeeApi::MAX_PAYLOAD + 5> out_buf;
 
   bool eat_ok(int count = 1) {
     for (int i = 0; i < count; ++i) {
@@ -269,123 +235,7 @@ class XBeeRadioDef : public XBeeRadio {
     for (int i = 0; i < 3 * count; ++i) in_buf.shift();
     return true;
   }
-
-  int base_payload_size(uint8_t payload_type) {
-    switch (payload_type) {
-#define S(x) case x::TYPE: return sizeof(x)
-      S(ATCommand);
-      S(ATCommandQueue);
-      S(ATCommandResponse);
-      S(TransmitSMS);
-      S(ReceiveSMS);
-      S(TransmitIP);
-      S(TransmitTLS);
-      S(ReceiveIP);
-      S(TransmitStatus);
-      S(ModemStatus);
-      S(RelayToInterface);
-      S(RelayFromInterface);
-      S(FirmwareUpdate);
-      S(FirmwareUpdateResponse);
-      S(GnssRequest);
-      S(GnssResponse);
-      S(GnssNmea);
-      S(GnssOneShot);
-#undef S
-    }
-    return -1;  // Type not recognized
-  }
 };
-
-char const* XBeeRadio::ATCommandResponse::status_text() const {
-  switch (status) {
-#define S(x) case x: return #x
-    S(OK);
-    S(ERROR);
-    S(BAD_COMMAND);
-    S(BAD_PARAM);
-#undef S
-  }
-  return "UNKNOWN";
-}
-
-char const* XBeeRadio::TransmitStatus::status_text() const {
-  // There's no enum for this one (too many to be worth it)
-  switch (status) {
-    case 0x0: return "OK";
-    case 0x20: return "CONNECTION_NOT_FOUND";
-    case 0x21: return "NETWORK_FAILURE";
-    case 0x22: return "NETWORK_DISCONNECTED";
-    case 0x2C: return "BAD_FRAME";
-    case 0x31: return "INTERNAL_ERROR";
-    case 0x32: return "RESOURCE_ERROR";
-    case 0x74: return "MESSAGE_TOO_LONG";
-    case 0x76: return "SOCKET_CLOSED_UNEXPECTEDLY";
-    case 0x78: return "BAD_UDP_PORT";
-    case 0x79: return "BAD_TCP_PORT";
-    case 0x7A: return "BAD_IP_ADDRESS";
-    case 0x7B: return "BAD_DATA_MODE";
-    case 0x7C: return "BAD_INTERFACE";
-    case 0x7D: return "INTERFACE_CLOSED";
-    case 0x7E: return "MODEM_UPDATE";
-    case 0x80: return "CONNECTION_REFUSED";
-    case 0x81: return "CONNECTION_LOST";
-    case 0x82: return "NO_SERVER";
-    case 0x83: return "SOCKET_CLOSED";
-    case 0x84: return "UNKNOWN_SERVER";
-    case 0x85: return "UNKNOWN_ERROR";
-    case 0x86: return "BAD_TLS_CONFIG";
-    case 0x87: return "SOCKET_DISCONNECTED";
-    case 0x88: return "SOCKET_UNBOUND";
-    case 0x89: return "SOCKET_INACTIVITY_TIMEOUT";
-    case 0x8A: return "NETWORK_PDP_DEACTIVATED";
-    case 0x8B: return "TLS_AUTHENTICATION_ERROR";
-  }
-  return "UNKNOWN";
-}
-
-char const *XBeeRadio::ModemStatus::status_text() const {
-  switch (status) {
-#define S(x) case x: return #x
-    S(POWER_UP);
-    S(WATCHDOG_RESET);
-    S(REGISTERED);
-    S(UNREGISTERED);
-    S(MANAGER_CONNECTED);
-    S(MANAGER_DISCONNECTED);
-    S(UPDATE_STARTED);
-    S(UPDATE_FAILED);
-    S(UPDATE_APPLYING);
-#undef S
-  }
-  return "UNKNOWN";
-}
-
-char const* XBeeRadio::FirmwareUpdateResponse::status_text() const {
-  switch (status) {
-#define S(x) case x: return #x
-    S(OK);
-    S(IN_PROGRESS);
-    S(NOT_STARTED);
-    S(SEQUENCE_ERROR);
-    S(INTERNAL_ERROR);
-    S(RESOURCE_ERROR);
-#undef S
-  }
-  return "UNKNOWN";
-}
-
-char const* XBeeRadio::GnssOneShot::status_text() const {
-  switch (status) {
-#define S(x) case x: return #x
-    S(OK);
-    S(INVALID);
-    S(TIMEOUT);
-    S(CANCELLED);
-#undef S
-  }
-  return "UNKNOWN";
-}
 
 XBeeRadio* make_xbee_radio(HardwareSerial* serial) {
   CL_ASSERT(serial != nullptr);

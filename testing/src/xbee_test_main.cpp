@@ -3,58 +3,48 @@
 #include "blub_station.h"
 #include "chatty_logging.h"
 #include "little_status.h"
+#include "xbee_api.h"
 #include "xbee_radio.h"
+#include "xbee_monitor.h"
 
-static long next_status_update = 0;
+XBeeMonitor* monitor = nullptr;
 
 void loop() {
-  XBeeRadio::IncomingFrame incoming;
-  while (xbee_radio->poll_api(&incoming)) {
-    switch (incoming.type) {
-      case XBeeRadio::ModemStatus::TYPE: {
-        auto const* text = incoming.payload.modem_status.status_text();
-        CL_REMARK("ModemStatus: %s", text);
-        status_screen->line_printf(3, "\f9Modem: %s", text);
-        break;
-      }
-      case XBeeRadio::ATCommandResponse::TYPE: {
-        auto const& atr = incoming.payload.at_command_response;
-        CL_REMARK(
-            "ATResponse (%c%c): %s = %d %d",
-            atr.command[0], atr.command[1], atr.status_text(),
-            incoming.extra_size >= 1 ? atr.value[0] : -1,
-            incoming.extra_size >= 2 ? atr.value[1] : -1);
-        break;
-      }
-      default:
-        CL_SPAM("Other payload type (0x%02x)", incoming.type);
-        break;
+  using namespace XBeeApi;
+  static Frame frame;
+
+  while (xbee_radio->poll_api(&frame)) {
+    if (monitor->maybe_handle_frame(frame)) continue;
+
+    int extra_size;
+    if (auto* modem = frame.decode_as<ModemStatus>()) {
+      auto const* text = modem->status_text();
+      CL_NOTICE("ModemStatus: %s", text);
+      status_screen->line_printf(3, "\f9Modem: %s", text);
+    } else {
+      CL_NOTICE("Other payload type (0x%02x)", frame.type);
     }
   }
 
-  if (xbee_radio->send_space_available() > 0) {
+  while (monitor->maybe_emit_frame(xbee_radio->send_available(), &frame)) {
+    xbee_radio->send_api_frame(frame);
+  }
+
+  if (xbee_radio->send_available() > 0) {
     status_screen->line_printf(2, "\f9Radio API ready");
   }
 
-  if (millis() > next_status_update) {
-    next_status_update += 500;
-    XBeeRadio::OutgoingFrame out = {};
-    out.type = out.payload.at_command.TYPE;
-    out.payload.at_command = {1, {'S', 'Q'}};
-    if (sizeof(out.payload.at_command) <= xbee_radio->send_space_available()) {
-      xbee_radio->send_api_frame(out);
-    }
-  }
 }
 
 void setup() {
   while (!Serial.dtr() && millis() < 2000) delay(10);
   blub_station_init("BLUB XBee Test");
-  next_status_update = millis();
 
   if (xbee_radio->raw_serial()) {
     status_screen->line_printf(1, "\f9Radio found");
   } else {
     status_screen->line_printf(1, "\f9Radio NOT found");
   }
+
+  monitor = make_xbee_monitor();
 }
