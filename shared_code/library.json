@@ -3,9 +3,13 @@
   "version": "0.0",
   "description": "Project Blub shared embedded code utilities",
   "keywords": [],
-  "build": { "srcDir": "." },
   "dependencies": {
+    "MQTT-C": "symlink://../../MQTT-C",
     "olikraus/U8g2": "^2.35.17",
-    "rlogiacco/CircularBuffer": "^1.4.0"
+    "rlogiacco/CircularBuffer": "^1.4.0",
+    "Wire": "*"
+  },
+  "build": {
+    "srcDir": "."
   }
 }

@@ -7,7 +7,9 @@
 // This file only uses u8g2.h, but pio won't find the library based on that?
 #include <U8g2lib.h>
 
-#include "chatty_logging.h"
+#include "tagged_logging.h"
+
+static const TaggedLoggingContext TL_CONTEXT("little_status");
 
 namespace {
 
@@ -43,7 +45,7 @@ class LittleStatusDef : public LittleStatus {
         temp_size = len + 1;
         temp = new char[temp_size];
       } else if (len < 0) {
-        CL_PROBLEM("Bad LittleStatus format (line %d): %s", line, format);
+        TL_PROBLEM("Bad LittleStatus format (line %d): %s", line, format);
         return;
       } else {
         break;
@@ -240,6 +242,6 @@ class LittleStatusDef : public LittleStatus {
 }  // namespace
 
 LittleStatus* make_little_status(u8g2_t* driver) {
-  CL_ASSERT(driver != nullptr);
+  TL_ASSERT(driver != nullptr);
   return new LittleStatusDef(driver);
 }

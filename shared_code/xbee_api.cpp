@@ -1,6 +1,6 @@
 #include "xbee_api.h"
 
-namespace XBeeApi {
+namespace XBeeAPI {
 
 char const* ATCommandResponse::status_text() const {
   switch (status) {
@@ -92,4 +92,4 @@ char const* GnssOneShot::status_text() const {
   return "UNKNOWN";
 }
 
-}  // namespace XBeeApi
+}  // namespace XBeeAPI

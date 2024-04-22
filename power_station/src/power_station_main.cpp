@@ -8,7 +8,9 @@
 
 #include "blub_station.h"
 #include "little_status.h"
-#include "chatty_logging.h"
+#include "tagged_logging.h"
+
+static const TaggedLoggingContext TL_CONTEXT("power_station");
 
 struct meter {
   int i2c_address;
@@ -23,7 +25,7 @@ std::array<meter, 3> meters({
 });
 
 void loop() {
-  CL_SPAM("LOOP");
+  TL_SPAM("LOOP");
 
   status_screen->line_printf(0, "\f9POWER STATION");
   status_screen->line_printf(1, "\f3 ");
@@ -32,7 +34,7 @@ void loop() {
   for (auto& meter : meters) {
     if (meter.driver) {
       sprintf(line + strlen(line), "\t\f9\b%s\b", meter.name);
-      CL_NOTICE(
+      TL_NOTICE(
           "%s: %.1fV %.1fmA [%.3fmVs] %.0fmW %.3fJ %.1fC", meter.name,
           meter.driver->readBusVoltage() * 1e-3,
           meter.driver->readCurrent(),
@@ -41,7 +43,7 @@ void loop() {
           meter.driver->readEnergy(),
           meter.driver->readDieTemp());
     } else {
-      CL_NOTICE("%s: not detected at startup", meter.name);
+      TL_NOTICE("%s: not detected at startup", meter.name);
     }
   }
   status_screen->line_printf(2, "%s", line + 1);
@@ -77,11 +79,11 @@ void setup() {
   for (auto& meter : meters) {
     meter.driver.emplace();
     if (meter.driver->begin(meter.i2c_address)) {
-      CL_NOTICE("\"%s\" meter at 0x%x", meter.name, meter.i2c_address);
+      TL_NOTICE("\"%s\" meter at 0x%x", meter.name, meter.i2c_address);
       meter.driver->setShunt(0.015, 10.0);
       meter.driver->setCurrentConversionTime(INA228_TIME_4120_us);
     } else {
-      CL_PROBLEM("No \"%s\" meter at 0x%x", meter.name, meter.i2c_address);
+      TL_PROBLEM("No \"%s\" meter at 0x%x", meter.name, meter.i2c_address);
       meter.driver.reset();
     }
   }

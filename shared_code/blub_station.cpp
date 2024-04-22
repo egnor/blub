@@ -7,9 +7,11 @@
 #include <U8g2lib.h>
 #include <Wire.h>
 
-#include "chatty_logging.h"
+#include "tagged_logging.h"
 #include "little_status.h"
 #include "xbee_radio.h"
+
+static const TaggedLoggingContext TL_CONTEXT("blub_station");
 
 static constexpr int SCREEN_I2C_ADDR = 0x3C;
 static constexpr int SCREEN_NRESET_PIN = 10;
@@ -30,15 +32,15 @@ class DummyStatus : public LittleStatus {
 
 class DummyXBee : public XBeeRadio {
   public:
-    virtual bool poll_api(XBeeApi::Frame*) override { return false; }
-    virtual int send_available() const override { return 0; }
-    virtual void send_api_frame(XBeeApi::Frame const&) override {}
+    virtual int available_for_send() const override { return 0; }
+    virtual void send_frame(XBeeAPI::Frame const&) override {}
+    virtual bool maybe_receive_frame(XBeeAPI::Frame*) override { return false; }
     virtual HardwareSerial* raw_serial() const override { return nullptr; }
 };
 
 void blub_station_init(char const* name) {
   Serial.begin(115200);  // Debug console
-  set_chatty_output(&Serial);
+  set_logging_output(&Serial);
 
   // If there's a USB host, wait a bit for serial connection before starting
   auto const start = millis();
@@ -50,9 +52,9 @@ void blub_station_init(char const* name) {
     (!usb_host_seen && (millis() - start < 500))
   );
 
-  CL_NOTICE("💡 %s", name);
+  TL_NOTICE("💡 %s", name);
 
-  CL_SPAM("Reset and wake screen and/or XBee (if present)");
+  TL_SPAM("Reset and wake screen and/or XBee (if present)");
   pinMode(SCREEN_NRESET_PIN, OUTPUT);
   pinMode(XBEE_NRESET_PIN, OUTPUT);
   digitalWrite(SCREEN_NRESET_PIN, LOW);
@@ -67,22 +69,22 @@ void blub_station_init(char const* name) {
   digitalWrite(XBEE_NRESET_PIN, HIGH);
   delay(100);
 
-  CL_SPAM("I2C setup (SCL=%d SDA=%d)", SCL, SDA);
+  TL_SPAM("I2C setup (SCL=%d SDA=%d)", SCL, SDA);
   if (!Wire.setSDA(SDA) || !Wire.setSCL(SCL)) {
-    CL_FATAL("Bad I2C pins (SCL=%d SDA=%d)", SCL, SDA);
+    TL_FATAL("Bad I2C pins (SCL=%d SDA=%d)", SCL, SDA);
   }
 
   Wire.begin();
   Wire.beginTransmission(SCREEN_I2C_ADDR);
   auto const i2c_status = Wire.endTransmission();
   if (i2c_status == 2) {
-    CL_PROBLEM("No screen found (I2C addr 0x%x)", SCREEN_I2C_ADDR);
+    TL_PROBLEM("No screen found (I2C addr 0x%x)", SCREEN_I2C_ADDR);
     status_screen = new DummyStatus();
   } else if (i2c_status != 0) {
-    CL_PROBLEM("Error %d probing screen (0x%x)", i2c_status, SCREEN_I2C_ADDR);
+    TL_PROBLEM("Error %d probing screen (0x%x)", i2c_status, SCREEN_I2C_ADDR);
     status_screen = new DummyStatus();
   } else {
-    CL_SPAM("Screen found (I2C addr 0x%x)", SCREEN_I2C_ADDR);
+    TL_SPAM("Screen found (I2C addr 0x%x)", SCREEN_I2C_ADDR);
     u8g2_Setup_ssd1306_i2c_128x64_noname_f(
         &screen_driver, U8G2_R0,
         u8x8_byte_arduino_hw_i2c, u8x8_gpio_and_delay_arduino
@@ -101,14 +103,14 @@ void blub_station_init(char const* name) {
   // If the XBee is present, it will force the radio-to-CPU line high
   pinMode(FROM_XBEE_PIN, INPUT_PULLDOWN);
   if (digitalRead(FROM_XBEE_PIN) == HIGH) {
-    CL_SPAM("XBee found (from=%d to=%d)", FROM_XBEE_PIN, TO_XBEE_PIN);
+    TL_SPAM("XBee found (from=%d to=%d)", FROM_XBEE_PIN, TO_XBEE_PIN);
     if (!Serial1.setPinout(TO_XBEE_PIN, FROM_XBEE_PIN)) {
-      CL_FATAL("XBee pinout error (TX=%d RX=%d)", TO_XBEE_PIN, FROM_XBEE_PIN);
+      TL_FATAL("XBee pinout error (TX=%d RX=%d)", TO_XBEE_PIN, FROM_XBEE_PIN);
     }
-    if (!Serial1.setFIFOSize(512)) CL_FATAL("XBee FIFO error");
+    if (!Serial1.setFIFOSize(512)) TL_FATAL("XBee FIFO error");
     xbee_radio = make_xbee_radio(&Serial1);
   } else {
-    CL_SPAM("No XBee found (from=%d)", FROM_XBEE_PIN);
+    TL_SPAM("No XBee found (from=%d)", FROM_XBEE_PIN);
     xbee_radio = new DummyXBee();
   }
 }

@@ -1,28 +1,32 @@
 #include <Arduino.h>
 
 #include "blub_station.h"
-#include "chatty_logging.h"
+#include "tagged_logging.h"
 #include "little_status.h"
 #include "xbee_api.h"
 #include "xbee_radio.h"
 #include "xbee_monitor.h"
+
+#include "mqtt.h"
+
+static const TaggedLoggingContext TL_CONTEXT("xbee_test");
 
 static XBeeMonitor* monitor = nullptr;
 
 static long last_loop_millis = 0;
 
 void loop() {
-  using namespace XBeeApi;
+  using namespace XBeeAPI;
   static Frame frame;
 
   auto const loop_millis = millis();
 
-  while (xbee_radio->poll_api(&frame)) {
-    monitor->maybe_handle_frame(frame);
+  while (xbee_radio->maybe_receive_frame(&frame)) {
+    monitor->handle_frame(frame);
   }
 
-  while (monitor->maybe_emit_frame(xbee_radio->send_available(), &frame)) {
-    xbee_radio->send_api_frame(frame);
+  while (monitor->maybe_emit_frame(xbee_radio->available_for_send(), &frame)) {
+    xbee_radio->send_frame(frame);
   }
 
   auto const& st = monitor->status();
@@ -38,11 +42,11 @@ void loop() {
         st.network_operator, st.operating_apn,
         st.technology == XBeeMonitor::UNKNOWN_TECH ? "" : st.technology_text());
     if (st.assoc_status == XBeeMonitor::CONNECTED) {
-      auto const ip = st.ip_address;
+      auto const& ip = st.ip_address;
       status_screen->line_printf(
           3, "\f9P%.1f Q%.1f %d.%d.%d.%d",
           st.received_power, st.received_quality,
-          ip >> 24, (ip >> 16) & 0xff, (ip >> 8) & 0xff, ip & 0xff);
+          ip[0], ip[1], ip[2], ip[3]);
     } else {
       status_screen->line_printf(
           3, "\f9P%.1f Q%.1f %s",
@@ -53,7 +57,7 @@ void loop() {
   if (last_loop_millis > 0) {
     auto const delay = loop_millis - last_loop_millis;
     if (delay > 2)
-      CL_NOTICE("loop time %ld ms", loop_millis - last_loop_millis);
+      TL_NOTICE("loop time %ld ms", loop_millis - last_loop_millis);
   }
 
   last_loop_millis = loop_millis;

@@ -40,7 +40,7 @@ class XBeeMonitor {
     Technology technology = UNKNOWN_TECH;
     float received_power;
     float received_quality;
-    uint32_t ip_address;
+    uint8_t ip_address[4];
 
     char const* carrier_profile_text() const;
     char const* assoc_text() const;
@@ -48,10 +48,10 @@ class XBeeMonitor {
   };
 
   virtual ~XBeeMonitor() = default;
-  virtual bool maybe_emit_frame(int available, XBeeApi::Frame*) = 0;
-  virtual bool maybe_handle_frame(XBeeApi::Frame const&) = 0;
-  virtual Status const& status() const = 0;
+  virtual void handle_frame(XBeeAPI::Frame const&) = 0;
+  virtual bool maybe_emit_frame(int available, XBeeAPI::Frame*) = 0;
 
+  virtual Status const& status() const = 0;
   virtual void configure_carrier(CarrierProfile) = 0;
   virtual void configure_apn(char const*) = 0;
 };

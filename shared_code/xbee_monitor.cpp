@@ -4,81 +4,38 @@
 
 #include <Arduino.h>
 
-using namespace XBeeApi;
+#include "tagged_logging.h"
+
+static const TaggedLoggingContext TL_CONTEXT("xbee_monitor");
+
+using namespace XBeeAPI;
 
 class XBeeMonitorDef : public XBeeMonitor {
  public:
-  virtual bool maybe_emit_frame(int available, Frame* frame) override {
-    if (available < wire_size<ATCommand>(1)) return false;
-
-    if (conf_carrier != UNKNOWN_PROFILE) {
-      auto* command = frame->setup_as<ATCommand>(1);
-      command->frame_id = 0;  // No ack, we'll just poll immediately after
-      memcpy(command->command, "CP", 2);
-      command->data[0] = conf_carrier;
-      conf_carrier = UNKNOWN_PROFILE;
-
-      CL_ASSERT(!memcmp(cycles[0].command, "CP", 2));
-      cycles[0].next_millis = 0;  // Check immediately after setting
-      return true;
-    }
-
-    if (conf_apn[0]) {
-      CL_SPAM("Requesting XBee APN \"%s\"", conf_apn);
-      auto const apn_size = strlen(conf_apn);
-      auto* command = frame->setup_as<ATCommand>(apn_size);
-      command->frame_id = 0;  // No ack, we'll just poll immediately after
-      memcpy(command->command, "AN", 2);
-      memcpy(command->data, conf_apn, apn_size);
-      conf_apn[0] = 0;
-
-      CL_ASSERT(!memcmp(cycles[1].command, "AN", 2));
-      cycles[1].next_millis = 0;  // Check immediately after setting
-      return true;
-    }
-
-    long const now = millis();
-    Cyclic* next = nullptr;
-    for (auto& cycle : cycles) {
-      if (cycle.command[0] == 0) continue;  // Disabled
-      if (cycle.next_millis - now > 0) continue;
-      if (next == nullptr || next->next_millis - cycle.next_millis > 0) {
-        next = &cycle;
-      }
-    }
-
-    if (next != nullptr) {
-      auto* command = frame->setup_as<ATCommand>();
-      command->frame_id = 100 + (next - &cycles[0]);
-      memcpy(command->command, next->command, sizeof(command->command));
-      next->next_millis = now + 10000;  // 20s poll (or status change)
-      return true;
-    }
-
-    return false;
-  }
-
-  virtual bool maybe_handle_frame(Frame const& frame) override {
+  virtual void handle_frame(Frame const& frame) override {
     int extra;
     if (auto* r = frame.decode_as<ATCommandResponse>(&extra)) {
-      if (r->frame_id < 100 || r->frame_id >= 100 + cycles.size()) return false;
-      auto* cyc = &cycles[r->frame_id - 100];
+      if (r->frame_id < 128 || r->frame_id >= 128 + cyclics.size()) {
+        return;
+      }
+
+      auto* cyc = &cyclics[r->frame_id - 128];
       if (memcmp(r->command, cyc->command, 2)) {
-        CL_PROBLEM("XBee replied to %.2s with %.2s", cyc->command, r->command);
-        return true;
+        TL_PROBLEM("XBee replied to %.2s with %.2s", cyc->command, r->command);
+        return;
       }
 
       if (r->status != 0) {
-        CL_PROBLEM("XBee answered %.2s with %s", r->command, r->status_text());
-        return true;
+        TL_PROBLEM("XBee answered %.2s with %s", r->command, r->status_text());
+        return;
       }
 
       if (cyc->cb) (this->*cyc->cb)(cyc, *r, extra);
-      return true;
+      return;
     }
 
     if (auto* modem = frame.decode_as<ModemStatus>()) {
-      CL_SPAM("XBee modem status %s", modem->status_text());
+      TL_SPAM("XBee modem status %s", modem->status_text());
 
       // Immediately update the status, then re-poll for the "proper" status
       switch (modem->status) {
@@ -97,7 +54,57 @@ class XBeeMonitorDef : public XBeeMonitor {
           break;
       }
 
-      for (auto& cycle : cycles) cycle.next_millis -= 10000;  // Re-poll
+      for (auto& cyc : cyclics) cyc.next_millis -= 10000;  // Re-poll
+      return;
+    }
+  }
+
+  virtual bool maybe_emit_frame(int available, Frame* frame) override {
+    if (available < wire_size_of<ATCommand>(1)) return false;
+
+    if (conf_carrier != UNKNOWN_PROFILE) {
+      auto* command = frame->setup_as<ATCommand>(1);
+      command->frame_id = 0;  // No ack, we'll just poll immediately after
+      memcpy(command->command, "CP", 2);
+      command->data[0] = conf_carrier;
+      conf_carrier = UNKNOWN_PROFILE;
+
+      TL_ASSERT(!memcmp(cyclics[0].command, "CP", 2));
+      cyclics[0].next_millis = 0;  // Check immediately after setting
+      cyclics[0].enabled = true;
+      return true;
+    }
+
+    if (conf_apn[0]) {
+      TL_SPAM("Requesting XBee APN \"%s\"", conf_apn);
+      auto const apn_size = strlen(conf_apn);
+      auto* command = frame->setup_as<ATCommand>(apn_size);
+      command->frame_id = 0;  // No ack, we'll just poll immediately after
+      memcpy(command->command, "AN", 2);
+      memcpy(command->data, conf_apn, apn_size);
+      conf_apn[0] = 0;
+
+      TL_ASSERT(!memcmp(cyclics[1].command, "AN", 2));
+      cyclics[1].next_millis = 0;  // Check immediately after setting
+      cyclics[1].enabled = true;
+      return true;
+    }
+
+    long const now = millis();
+    Cyclic* next = nullptr;
+    for (auto& cyc : cyclics) {
+      if (!cyc.enabled) continue;
+      if (cyc.next_millis - now > 0) continue;
+      if (next == nullptr || next->next_millis - cyc.next_millis > 0) {
+        next = &cyc;
+      }
+    }
+
+    if (next != nullptr) {
+      auto* command = frame->setup_as<ATCommand>();
+      command->frame_id = 128 + (next - &cyclics[0]);
+      memcpy(command->command, next->command, sizeof(command->command));
+      next->next_millis = now + 10000;  // 20s poll (or status change)
       return true;
     }
 
@@ -108,24 +115,25 @@ class XBeeMonitorDef : public XBeeMonitor {
 
   virtual void configure_carrier(CarrierProfile carrier) {
     conf_carrier = carrier;
-    cycles[0].next_millis = 0;  // Force immediate set
+    cyclics[0].next_millis = 0;  // Force immediate set
   }
 
   virtual void configure_apn(char const* apn) {
     copy_text(apn, strlen(apn), conf_apn);
-    cycles[1].next_millis = 0;  // Force immediate set
+    cyclics[1].next_millis = 0;  // Force immediate set
   }
 
  private:
   struct Cyclic {
     char command[3];
     void (XBeeMonitorDef::*cb)(Cyclic*, ATCommandResponse const&, int extra);
-    long next_millis;
+    bool enabled = true;
+    long next_millis = 0;
   };
 
-  std::array<Cyclic, 15> cycles{{
-    { "CP", &XBeeMonitorDef::handle_carrier_profile },  // Must be [0]
-    { "AN", &XBeeMonitorDef::handle_requested_apn },    // Must be [1]
+  std::array<Cyclic, 15> cyclics{{
+    { "CP", &XBeeMonitorDef::handle_config_cp },        // Must be [0]
+    { "AN", &XBeeMonitorDef::handle_config_apn },  // Must be [1]
     { "HV", &XBeeMonitorDef::handle_hver },
     { "VR", &XBeeMonitorDef::handle_fver },
     { "S#", &XBeeMonitorDef::handle_iccid },
@@ -153,126 +161,128 @@ class XBeeMonitorDef : public XBeeMonitor {
     to[len] = 0;
   }
 
-  void handle_hver(Cyclic* cycle, ATCommandResponse const& r, int extra) {
+  void handle_hver(Cyclic* cyc, ATCommandResponse const& r, int extra) {
     if (extra == 2) {
-      stat.hardware_ver = (r.data[0] << 8) | r.data[1];
-      CL_SPAM("XBee hardware version %04x", stat.hardware_ver);
-      cycle->command[0] = 0;  // Disable (it won't change)
+      stat.hardware_ver = *reinterpret_cast<uint16_be const*>(r.data);
+      TL_SPAM("XBee hardware version %04x", stat.hardware_ver);
+      cyc->enabled = false;  // Won't change
     } else {
-      CL_PROBLEM("Bad XBee reply length (MV: %d != 2 bytes)", extra);
+      TL_PROBLEM("Bad XBee reply length (MV: %d != 2 bytes)", extra);
     }
   }
 
-  void handle_fver(Cyclic* cycle, ATCommandResponse const& r, int extra) {
+  void handle_fver(Cyclic* cyc, ATCommandResponse const& r, int extra) {
     if (extra == 4) {
-      uint8_t const* d = r.data;
-      stat.firmware_ver = (d[0] << 24) | (d[1] << 16) | (d[2] << 8) | d[3];
-      CL_SPAM("XBee firmware version %05x", stat.firmware_ver);
-      cycle->command[0] = 0;  // Disable (it won't change)
+      stat.firmware_ver = *reinterpret_cast<uint32_be const*>(r.data);
+      TL_SPAM("XBee firmware version %05x", stat.firmware_ver);
+      cyc->enabled = false;  // Won't change
     } else {
-      CL_PROBLEM("Bad XBee reply length (VR: %d != 4 bytes)", extra);
+      TL_PROBLEM("Bad XBee reply length (VR: %d != 4 bytes)", extra);
     }
   }
 
-  void handle_iccid(Cyclic* cycle, ATCommandResponse const& r, int extra) {
+  void handle_iccid(Cyclic* cyc, ATCommandResponse const& r, int extra) {
     copy_text(r.data, extra, stat.iccid);
-    CL_SPAM("XBee ICCID \"%s\"", stat.iccid);
-    if (stat.iccid[0]) cycle->command[0] = 0;  // Disable (it won't change)
+    TL_SPAM("XBee ICCID \"%s\"", stat.iccid);
+    if (stat.iccid[0]) cyc->enabled = false;  // Disable (it won't change)
   }
 
-  void handle_imei(Cyclic* cycle, ATCommandResponse const& r, int extra) {
+  void handle_imei(Cyclic* cyc, ATCommandResponse const& r, int extra) {
     copy_text(r.data, extra, stat.imei);
-    CL_SPAM("XBee IMEI \"%s\"", stat.imei);
-    if (stat.imei[0]) cycle->command[0] = 0;  // Disable (it won't change)
+    TL_SPAM("XBee IMEI \"%s\"", stat.imei);
+    if (stat.imei[0]) cyc->enabled = false;  // Disable (it won't change)
   }
 
-  void handle_imsi(Cyclic* cycle, ATCommandResponse const& r, int extra) {
+  void handle_imsi(Cyclic* cyc, ATCommandResponse const& r, int extra) {
     copy_text(r.data, extra, stat.imsi);
-    if (stat.imsi[0]) cycle->command[0] = 0;  // Disable (it won't change)
+    if (stat.imsi[0]) cyc->enabled = false;  // Disable (it won't change)
   }
 
-  void handle_carrier_profile(Cyclic*, ATCommandResponse const& r, int extra) {
+  void handle_config_cp(Cyclic* cyc, ATCommandResponse const& r, int extra) {
     if (extra == 1) {
       stat.carrier_profile = (CarrierProfile) r.data[0];
-      CL_SPAM("XBee carrier profile %s", stat.carrier_profile_text());
+      TL_SPAM("XBee carrier profile %s", stat.carrier_profile_text());
+      cyc->enabled = false;  // Won't change (unless we change it)
     } else if (extra != 0) {
-      CL_PROBLEM("Bad XBee reply length (CP: %d != 1 byte)", extra);
+      TL_PROBLEM("Bad XBee reply length (CP: %d != 1 byte)", extra);
     }
   }
 
   void handle_assoc(Cyclic*, ATCommandResponse const& r, int extra) {
     if (extra == 1) {
       stat.assoc_status = (AssociationStatus) r.data[0];
-      CL_SPAM("XBee assoc status %s", stat.assoc_text());
+      TL_SPAM("XBee assoc status %s", stat.assoc_text());
     } else {
-      CL_PROBLEM("Bad XBee reply length (AI: %d != 1 byte)", extra);
+      TL_PROBLEM("Bad XBee reply length (AI: %d != 1 byte)", extra);
     }
   }
 
   void handle_operator(Cyclic*, ATCommandResponse const& r, int extra) {
     copy_text(r.data, extra, stat.network_operator);
-    CL_SPAM("XBee network operator \"%s\"", stat.network_operator);
+    TL_SPAM("XBee network operator \"%s\"", stat.network_operator);
   }
 
   void handle_time(Cyclic*, ATCommandResponse const& r, int extra) {
     if (extra == 4) {
       uint8_t const* d = r.data;
-      uint32_t value = (d[0] << 24) | (d[1] << 16) | (d[2] << 8) | d[3];
+      uint32_t const value = *reinterpret_cast<uint32_be const*>(d);
       stat.network_time = value;
       stat.network_time_millis = millis();
       uint32_t const offset = value - stat.network_time_millis / 1000;
-      CL_SPAM("XBee network time %lu (offset %lu)", value, offset);
+      TL_SPAM("XBee network time %lu (offset %lu)", value, offset);
     } else if (extra != 0) {
-      CL_PROBLEM("Bad XBee reply length (DT: %d != 4 bytes)", extra);
+      TL_PROBLEM("Bad XBee reply length (DT: %d != 4 bytes)", extra);
     }
   }
 
-  void handle_requested_apn(Cyclic*, ATCommandResponse const& r, int extra) {
+  void handle_config_apn(Cyclic* cyc, ATCommandResponse const& r, int extra) {
     copy_text(r.data, extra, stat.requested_apn);
-    CL_SPAM("XBee requested APN \"%s\"", stat.requested_apn);
+    TL_SPAM("XBee requested APN \"%s\"", stat.requested_apn);
+    cyc->enabled = false;  // Won't change (unless we change it)
   }
 
   void handle_operating_apn(Cyclic*, ATCommandResponse const& r, int extra) {
     copy_text(r.data, extra, stat.operating_apn);
-    CL_SPAM("XBee operating APN \"%s\"", stat.operating_apn);
+    TL_SPAM("XBee operating APN \"%s\"", stat.operating_apn);
   }
 
   void handle_technology(Cyclic*, ATCommandResponse const& r, int extra) {
     if (extra == 2) {
-      stat.technology = (Technology) ((r.data[0] << 8) | r.data[1]);
-      CL_SPAM("XBee technology %s", stat.technology_text());
+      uint16_t const value = *reinterpret_cast<uint16_be const*>(r.data);
+      stat.technology = (Technology) value;
+      TL_SPAM("XBee technology %s", stat.technology_text());
     } else if (extra != 0) {
-      CL_PROBLEM("Bad XBee reply length (OT: %d != 1 byte)", extra);
+      TL_PROBLEM("Bad XBee reply length (OT: %d != 1 byte)", extra);
     }
   }
 
   void handle_rsrq(Cyclic*, ATCommandResponse const& r, int extra) {
     if (extra == 2) {
-      uint16_t const value = (r.data[0] << 8) | r.data[1];
+      uint16_t const value = *reinterpret_cast<uint16_be const*>(r.data);
       stat.received_quality = value * -0.1f;
-      CL_SPAM("XBee signal quality %.1fdbm", stat.received_quality);
+      TL_SPAM("XBee signal quality %.1fdbm", stat.received_quality);
     } else if (extra != 0) {
-      CL_PROBLEM("Bad XBee reply length (SQ: %d != 1 byte)", extra);
+      TL_PROBLEM("Bad XBee reply length (SQ: %d != 1 byte)", extra);
     }
   }
 
   void handle_rsrp(Cyclic*, ATCommandResponse const& r, int extra) {
     if (extra == 2) {
-      uint16_t const value = (r.data[0] << 8) | r.data[1];
+      uint16_t const value = *reinterpret_cast<uint16_be const*>(r.data);
       stat.received_power = value * -0.1f;
-      CL_SPAM("XBee signal power %.1fdbm", stat.received_power);
+      TL_SPAM("XBee signal power %.1fdbm", stat.received_power);
     } else if (extra != 0) {
-      CL_PROBLEM("Bad XBee reply length (SW: %d != 1 byte)", extra);
+      TL_PROBLEM("Bad XBee reply length (SW: %d != 1 byte)", extra);
     }
   }
 
   void handle_ip(Cyclic*, ATCommandResponse const& r, int extra) {
     if (extra == 4) {
-      uint8_t const* d = r.data;
-      stat.ip_address = (d[0] << 24) | (d[1] << 16) | (d[2] << 8) | d[3];
-      CL_SPAM("XBee IP %d.%d.%d.%d", d[0], d[1], d[2], d[3]);
+      uint8_t const* ip = r.data;
+      memcpy(stat.ip_address, ip, 4);
+      TL_SPAM("XBee IP %d.%d.%d.%d", ip[0], ip[1], ip[2], ip[3]);
     } else if (extra != 0) {
-      CL_PROBLEM("Bad XBee reply length (MY: %d != 4 bytes)", extra);
+      TL_PROBLEM("Bad XBee reply length (MY: %d != 4 bytes)", extra);
     }
   }
 };
