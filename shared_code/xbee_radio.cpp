@@ -226,11 +226,12 @@ class XBeeRadioDef : public XBeeRadio {
   CircularBuffer<uint8_t, XBeeAPI::MAX_PAYLOAD + 5> out_buf;
 
   bool eat_ok(int count = 1) {
+    int const skip = in_buf.size() - 3 * count;
+    if (skip < 0) return false;
     for (int i = 0; i < count; ++i) {
-      auto const& b = in_buf;
-      auto const p = b.size() - 3 * (count - i);
-      if (p < 0) return false;
-      if (b[p] != 'O' || b[p + 1] != 'K' || b[p + 2] != '\r') return false;
+      auto const& d = in_buf;
+      int const p = skip + 3 * i;
+      if (d[p] != 'O' || d[p + 1] != 'K' || d[p + 2] != '\r') return false;
     }
     for (int i = 0; i < 3 * count; ++i) in_buf.shift();
     return true;

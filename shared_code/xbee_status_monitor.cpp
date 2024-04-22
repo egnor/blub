@@ -1,4 +1,4 @@
-#include "xbee_monitor.h"
+#include "xbee_status_monitor.h"
 
 #include <array>
 
@@ -6,11 +6,11 @@
 
 #include "tagged_logging.h"
 
-static const TaggedLoggingContext TL_CONTEXT("xbee_monitor");
+static const TaggedLoggingContext TL_CONTEXT("xbee_status_monitor");
 
 using namespace XBeeAPI;
 
-class XBeeMonitorDef : public XBeeMonitor {
+class XBeeStatusMonitorDef : public XBeeStatusMonitor {
  public:
   virtual void on_incoming(Frame const& frame) override {
     int extra;
@@ -126,27 +126,28 @@ class XBeeMonitorDef : public XBeeMonitor {
  private:
   struct Cyclic {
     char command[3];
-    void (XBeeMonitorDef::*cb)(Cyclic*, ATCommandResponse const&, int extra);
+    void (XBeeStatusMonitorDef::*cb)(
+        Cyclic*, ATCommandResponse const&, int extra);
     bool enabled = true;
     long next_millis = 0;
   };
 
   std::array<Cyclic, 15> cyclics{{
-    { "CP", &XBeeMonitorDef::handle_config_cp },        // Must be [0]
-    { "AN", &XBeeMonitorDef::handle_config_apn },  // Must be [1]
-    { "HV", &XBeeMonitorDef::handle_hver },
-    { "VR", &XBeeMonitorDef::handle_fver },
-    { "S#", &XBeeMonitorDef::handle_iccid },
-    { "IM", &XBeeMonitorDef::handle_imei },
-    { "II", &XBeeMonitorDef::handle_imsi },
-    { "AI", &XBeeMonitorDef::handle_assoc },
-    { "MN", &XBeeMonitorDef::handle_operator },
-    { "DT", &XBeeMonitorDef::handle_time },
-    { "OA", &XBeeMonitorDef::handle_operating_apn },
-    { "OT", &XBeeMonitorDef::handle_technology },
-    { "SQ", &XBeeMonitorDef::handle_rsrq },
-    { "SW", &XBeeMonitorDef::handle_rsrp },
-    { "MY", &XBeeMonitorDef::handle_ip },
+    { "CP", &XBeeStatusMonitorDef::handle_config_cp },   // Must be [0]
+    { "AN", &XBeeStatusMonitorDef::handle_config_apn },  // Must be [1]
+    { "HV", &XBeeStatusMonitorDef::handle_hver },
+    { "VR", &XBeeStatusMonitorDef::handle_fver },
+    { "S#", &XBeeStatusMonitorDef::handle_iccid },
+    { "IM", &XBeeStatusMonitorDef::handle_imei },
+    { "II", &XBeeStatusMonitorDef::handle_imsi },
+    { "AI", &XBeeStatusMonitorDef::handle_assoc },
+    { "MN", &XBeeStatusMonitorDef::handle_operator },
+    { "DT", &XBeeStatusMonitorDef::handle_time },
+    { "OA", &XBeeStatusMonitorDef::handle_operating_apn },
+    { "OT", &XBeeStatusMonitorDef::handle_technology },
+    { "SQ", &XBeeStatusMonitorDef::handle_rsrq },
+    { "SW", &XBeeStatusMonitorDef::handle_rsrp },
+    { "MY", &XBeeStatusMonitorDef::handle_ip },
   }};
 
   Status stat = {};
@@ -287,11 +288,11 @@ class XBeeMonitorDef : public XBeeMonitor {
   }
 };
 
-XBeeMonitor* make_xbee_monitor() {
-  return new XBeeMonitorDef();
+XBeeStatusMonitor* make_xbee_status_monitor() {
+  return new XBeeStatusMonitorDef();
 }
 
-char const* XBeeMonitor::Status::carrier_profile_text() const {
+char const* XBeeStatusMonitor::Status::carrier_profile_text() const {
   switch (carrier_profile) {
 #define S(x) case x: return #x
     S(AUTODETECT);
@@ -304,7 +305,7 @@ char const* XBeeMonitor::Status::carrier_profile_text() const {
   }
 }
 
-char const* XBeeMonitor::Status::assoc_text() const {
+char const* XBeeStatusMonitor::Status::assoc_text() const {
   switch (assoc_status) {
 #define S(x) case x: return #x
     S(CONNECTED);
@@ -326,7 +327,7 @@ char const* XBeeMonitor::Status::assoc_text() const {
   }
 }
 
-char const* XBeeMonitor::Status::technology_text() const {
+char const* XBeeStatusMonitor::Status::technology_text() const {
   switch (technology) {
 #define S(x) case x: return #x
     S(GSM);

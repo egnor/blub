@@ -4,7 +4,7 @@
 
 #include "xbee_api.h"
 
-class XBeeMonitor {
+class XBeeStatusMonitor {
  public:
   enum CarrierProfile : uint8_t {
     AUTODETECT = 0, NO_PROFILE = 1, ATT = 2, VERIZON = 3, AUSTRALIA = 4,
@@ -47,7 +47,7 @@ class XBeeMonitor {
     char const* technology_text() const;
   };
 
-  virtual ~XBeeMonitor() = default;
+  virtual ~XBeeStatusMonitor() = default;
   virtual void on_incoming(XBeeAPI::Frame const&) = 0;
   virtual bool maybe_make_outgoing(int space, XBeeAPI::Frame*) = 0;
 
@@ -56,4 +56,4 @@ class XBeeMonitor {
   virtual void configure_apn(char const*) = 0;
 };
 
-XBeeMonitor* make_xbee_monitor();
+XBeeStatusMonitor* make_xbee_status_monitor();

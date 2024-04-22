@@ -5,13 +5,13 @@
 #include "little_status.h"
 #include "xbee_api.h"
 #include "xbee_radio.h"
-#include "xbee_monitor.h"
+#include "xbee_status_monitor.h"
 
 #include "mqtt.h"
 
 static const TaggedLoggingContext TL_CONTEXT("xbee_test");
 
-static XBeeMonitor* monitor = nullptr;
+static XBeeStatusMonitor* monitor = nullptr;
 
 static long last_loop_millis = 0;
 
@@ -41,8 +41,9 @@ void loop() {
     status_screen->line_printf(
         2, "\f9%s / %s / %s",
         st.network_operator, st.operating_apn,
-        st.technology == XBeeMonitor::UNKNOWN_TECH ? "" : st.technology_text());
-    if (st.assoc_status == XBeeMonitor::CONNECTED) {
+        st.technology == XBeeStatusMonitor::UNKNOWN_TECH
+            ? "" : st.technology_text());
+    if (st.assoc_status == XBeeStatusMonitor::CONNECTED) {
       auto const& ip = st.ip_address;
       status_screen->line_printf(
           3, "\f9P%.1f Q%.1f %d.%d.%d.%d",
@@ -67,5 +68,5 @@ void loop() {
 void setup() {
   while (!Serial.dtr() && millis() < 2000) delay(10);
   blub_station_init("BLUB XBee Test");
-  monitor = make_xbee_monitor();
+  monitor = make_xbee_status_monitor();
 }

@@ -1,5 +1,5 @@
 // Driver for a Digi XBee to put it in API mode and send/receive frames.
-// For details of actual operation, see xbee_api.h and xbee_monitor.h.
+// For details of actual operation, see xbee_api.h and xbee_status_monitor.h.
 
 #pragma once
 

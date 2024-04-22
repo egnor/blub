@@ -13,46 +13,73 @@ extern "C" { static void on_message(void**, struct mqtt_response_publish*); }
 
 class XBeeMQTTAdapterDef : public XBeeMQTTAdapter {
  public:
-  XBeeMQTTAdapterDef(int tx_size, int rx_size) {
+  XBeeMQTTAdapterDef(
+      int tx_size, int rx_size,
+      std::function<void(mqtt_response_publish const&)> const& on_message) {
+    TL_NOTICE("Creating adapter: tx=%d rx=%d", tx_size, rx_size);
     tx_buf = new uint8_t[tx_buf_size = tx_size];
     rx_buf = new uint8_t[rx_buf_size = rx_size];
+    message_callback = on_message;
     mqtt_init(&mqtt, this, tx_buf, tx_size, rx_buf, rx_size, ::on_message);
     mqtt.publish_response_callback_state = this;
   }
 
   virtual ~XBeeMQTTAdapterDef() override {
+    TL_NOTICE("Destroying adapter");
     delete[] tx_buf;
     delete[] rx_buf;
   }
 
-  virtual bool incoming_to_outgoing(
+  virtual bool process_frame(
       Frame const& incoming, int outgoing_space, Frame* outgoing) override {
-    if (outgoing && server_to_close.dest_port != 0) {
-      auto *close = outgoing->setup_as<TransmitIP>(0);
-      *close = server_to_close;
-      close->frame_id = 0;
-      close->options = TransmitIP::CLOSE_SOCKET;
-      server_to_close = {};
-      return true;  // Ignore incoming data until we reopen the socket
+    if (auto* stat = incoming.decode_as<SocketStatus>()) {
+      if (stat->socket == socket && stat->status != SocketStatus::CONNECTED) {
+        TL_PROBLEM("Socket error: %s", stat->status_text());
+        socket = -1;  // XBee closes socket automatically on error
+      }
+    }
+
+    if (auto* stat = incoming.decode_as<SocketCloseResponse>()) {
+      if (stat->socket == socket) {
+        TL_SPAM("Socket %d closed", socket);
+        socket = -1;
+      }
+    }
+
+    if (auto* stat = incoming.decode_as<TransmitStatus>()) {
+      if (stat->frame_id == 'Q') {
+        if (stat->status == 0) {
+          TL_SPAM(">>>> XBee confirmed transmission");
+        } else if (socket >= 0) {
+          TL_PROBLEM("Transmit error: %s", stat->status_text());
+          if (outgoing) {
+            TL_SPAM("Closing socket %d", socket);
+            auto* close = outgoing->setup_as<SocketClose>(0);
+            close->frame_id = 'Q';  // Our signature
+            close->socket = socket;
+            socket = -1;
+            return true;
+          }
+        }
+      }
     }
 
     write_data = nullptr;
     write_filled = write_capacity = 0;
-    if (outgoing && server.dest_port != 0) {
-      auto *transmit = outgoing->setup_as<TransmitIP>(0);
-      *transmit = server;
-      transmit->frame_id = 0;
-      write_data = transmit->data;
-      write_capacity = std::max(0, outgoing_space - wire_size_of<TransmitIP>());
+    if (outgoing && socket >= 0) {
+      auto *send = outgoing->setup_as<SocketSend>(0);
+      send->frame_id = 'Q';  // Our signature
+      send->socket = socket;
+      write_data = send->data;
+      write_capacity = std::max(0, outgoing_space - wire_size_of<SocketSend>());
     }
 
     read_data = nullptr;
     read_consumed = read_received = 0;
     int receive_size;
-    if (auto* receive = incoming.decode_as<ReceiveIP>(&receive_size)) {
-      if (!memcmp(receive->source_ip, server.dest_ip, 4) &&
-          receive->source_port == server.dest_port &&
-          receive->protocol == server.protocol) {
+    if (auto* receive = incoming.decode_as<SocketReceive>(&receive_size)) {
+      if (receive->socket == socket) {
+        TL_SPAM("<< %d bytes received from XBee", receive_size);
         read_data = receive->data;
         read_received = receive_size;
       }
@@ -62,48 +89,52 @@ class XBeeMQTTAdapterDef : public XBeeMQTTAdapter {
 
     if (read_consumed != read_received) {
       TL_PROBLEM(
-          "%d/%d bytes leftover in frame",
+          "%d/%d bytes unconsumed in frame",
           read_received, read_received - read_consumed);
     }
 
-    if (write_filled > 0) outgoing->payload_size += write_filled;
+    if (write_filled > 0) {
+      TL_SPAM(">> %d bytes sending to XBee", write_filled);
+      outgoing->payload_size += write_filled;
+    }
     write_data = nullptr;
     write_filled = write_capacity = 0;
-
-    return (outgoing->payload_size > wire_size_of<TransmitIP>());
+    return (outgoing->payload_size > wire_size_of<SocketSend>());
   }
 
-  virtual void connect_network(
-      TransmitIP const& server,
-      std::function<void(mqtt_response_publish const&)> callback) override {
-    server_to_close = this->server;
-    this->server = server;
-    this->message_callback = callback;
-    mqtt_reinit(&mqtt, this, tx_buf, tx_buf_size, rx_buf, rx_buf_size);
+  virtual void set_socket(int socket) override {
+    TL_SPAM("Using socket %d", socket);
+    this->socket = socket;
+    if (socket >= 0) {
+      mqtt_reinit(&mqtt, this, tx_buf, tx_buf_size, rx_buf, rx_buf_size);
+    }
   }
 
   virtual mqtt_client* client() override { return &mqtt; }
 
   void on_message(mqtt_response_publish const& publish) {
+    TL_SPAM("Incoming: %.*s", publish.topic_name_size, publish.topic_name);
     if (message_callback) message_callback(publish);
   }
 
   ssize_t pal_sendall(void const* buf, size_t len) {
+    if (socket < 0) return MQTT_ERROR_SOCKET_ERROR;
     int const send_size = std::min<int>(len, write_capacity - write_filled);
     if (send_size <= 0) return 0;
     memcpy(write_data + write_filled, buf, send_size);
     write_filled += send_size;
+    TL_SPAM(">>> %d/%d bytes written by MQTT client", send_size, len);
     return send_size;
-    // TODO: errors
   }
 
   ssize_t pal_recvall(void* buf, size_t len) {
+    if (socket < 0) return MQTT_ERROR_SOCKET_ERROR;
     int const recv_size = std::min<int>(len, read_received - read_consumed);
-    if (recv_size < 0) return 0;
+    if (recv_size <= 0) return 0;
     memcpy(buf, read_data + read_consumed, recv_size);
     read_consumed += recv_size;
+    TL_SPAM("<<< %d/%d bytes read by MQTT client", recv_size, len);
     return recv_size;
-    // TODO: errors
   }
 
  private:
@@ -120,14 +151,15 @@ class XBeeMQTTAdapterDef : public XBeeMQTTAdapter {
   mqtt_client mqtt = {};
   uint8_t* tx_buf = nullptr, *rx_buf = nullptr;
   int tx_buf_size = 0, rx_buf_size = 0;
+  int socket = -1;
 
-  TransmitIP server_to_close = {};
-  TransmitIP server = {};
   std::function<void(mqtt_response_publish const&)> message_callback = nullptr;
 };
 
-XBeeMQTTAdapter* make_xbee_mqtt_adapter(int tx_size, int rx_size) {
-  return new XBeeMQTTAdapterDef(tx_size, rx_size);
+XBeeMQTTAdapter* make_xbee_mqtt_adapter(
+    int tx_size, int rx_size,
+    std::function<void(mqtt_response_publish const&)> const& on_message) {
+  return new XBeeMQTTAdapterDef(tx_size, rx_size, on_message);
 }
 
 extern "C" {

@@ -12,16 +12,15 @@ class XBeeMQTTAdapter {
  public:
   virtual ~XBeeMQTTAdapter() {}
 
-  virtual bool incoming_to_outgoing(
+  virtual bool process_frame(
       XBeeAPI::Frame const& incoming,
       int outgoing_space, XBeeAPI::Frame* outgoing) = 0;
 
-  virtual void connect_network(
-      XBeeAPI::TransmitIP const& server,
-      std::function<void(mqtt_response_publish const&)> message_callback) = 0;
+  virtual void set_socket(int socket) = 0;
 
   virtual mqtt_client* client() = 0;
 };
 
 XBeeMQTTAdapter* make_xbee_mqtt_adapter(
-    int send_buffer_size, int receive_buffer_size);
+    int send_buffer_size, int receive_buffer_size,
+    std::function<void(mqtt_response_publish const&)> const& message_callback);
