@@ -16,7 +16,7 @@ class XBeeMQTTAdapter {
       XBeeAPI::Frame const& handle,
       int available, XBeeAPI::Frame* emit) = 0;
 
-  virtual void start_mqtt(
+  virtual void connect_network(
       XBeeAPI::TransmitIP const& server,
       std::function<void(mqtt_response_publish const&)> message_callback) = 0;
 

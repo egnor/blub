@@ -25,12 +25,12 @@ class XBeeMQTTAdapterDef : public XBeeMQTTAdapter {
 
   virtual bool handle_and_maybe_emit_frame(
       Frame const& handle, int available, Frame* emit) override {
-    if (old_server.dest_port != 0) {
+    if (server_to_close.dest_port != 0) {
       auto *close = emit->setup_as<TransmitIP>(0);
-      *close = old_server;
+      *close = server_to_close;
       close->frame_id = 0;
       close->options = TransmitIP::CLOSE_SOCKET;
-      old_server = {};
+      server_to_close = {};
       return true;  // Ignore incoming data until we reopen the socket
     }
 
@@ -43,7 +43,6 @@ class XBeeMQTTAdapterDef : public XBeeMQTTAdapter {
       write_data = transmit->data;
       write_capacity = available - wire_size_of<TransmitIP>();
     }
-
 
     read_data = nullptr;
     read_consumed = read_received = 0;
@@ -72,10 +71,10 @@ class XBeeMQTTAdapterDef : public XBeeMQTTAdapter {
     return (emit->payload_size > wire_size_of<TransmitIP>());
   }
 
-  virtual void start_mqtt(
+  virtual void connect_network(
       TransmitIP const& server,
       std::function<void(mqtt_response_publish const&)> callback) override {
-    old_server = this->server;
+    server_to_close = this->server;
     this->server = server;
     this->message_callback = callback;
     mqtt_reinit(&mqtt, this, tx_buf, tx_buf_size, rx_buf, rx_buf_size);
@@ -99,7 +98,7 @@ class XBeeMQTTAdapterDef : public XBeeMQTTAdapter {
   uint8_t* tx_buf = nullptr, *rx_buf = nullptr;
   int tx_buf_size = 0, rx_buf_size = 0;
 
-  TransmitIP old_server = {};
+  TransmitIP server_to_close = {};
   TransmitIP server = {};
   std::function<void(mqtt_response_publish const&)> message_callback = nullptr;
 };
