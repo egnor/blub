@@ -1,5 +1,7 @@
 #include "xbee_mqtt_adapter.h"
 
+#include <algorithm>
+
 #include "tagged_logging.h"
 #include "xbee_mqtt_pal.h"
 
@@ -7,14 +9,14 @@ TaggedLoggingContext TL_CONTEXT("xbee_mqtt_adapter");
 
 using namespace XBeeAPI;
 
-extern "C" { static void on_message(void**, struct mqtt_response_publish *); }
+extern "C" { static void on_message(void**, struct mqtt_response_publish*); }
 
 class XBeeMQTTAdapterDef : public XBeeMQTTAdapter {
  public:
   XBeeMQTTAdapterDef(int tx_size, int rx_size) {
     tx_buf = new uint8_t[tx_buf_size = tx_size];
     rx_buf = new uint8_t[rx_buf_size = rx_size];
-    mqtt_init(&mqtt, this, tx_buf, tx_size, rx_buf, rx_size, on_message);
+    mqtt_init(&mqtt, this, tx_buf, tx_size, rx_buf, rx_size, ::on_message);
     mqtt.publish_response_callback_state = this;
   }
 
@@ -23,10 +25,10 @@ class XBeeMQTTAdapterDef : public XBeeMQTTAdapter {
     delete[] rx_buf;
   }
 
-  virtual bool handle_and_maybe_emit_frame(
-      Frame const& handle, int available, Frame* emit) override {
-    if (server_to_close.dest_port != 0) {
-      auto *close = emit->setup_as<TransmitIP>(0);
+  virtual bool incoming_to_outgoing(
+      Frame const& incoming, int outgoing_space, Frame* outgoing) override {
+    if (outgoing && server_to_close.dest_port != 0) {
+      auto *close = outgoing->setup_as<TransmitIP>(0);
       *close = server_to_close;
       close->frame_id = 0;
       close->options = TransmitIP::CLOSE_SOCKET;
@@ -36,18 +38,18 @@ class XBeeMQTTAdapterDef : public XBeeMQTTAdapter {
 
     write_data = nullptr;
     write_filled = write_capacity = 0;
-    if (emit && server.dest_port != 0) {
-      auto *transmit = emit->setup_as<TransmitIP>(0);
+    if (outgoing && server.dest_port != 0) {
+      auto *transmit = outgoing->setup_as<TransmitIP>(0);
       *transmit = server;
       transmit->frame_id = 0;
       write_data = transmit->data;
-      write_capacity = available - wire_size_of<TransmitIP>();
+      write_capacity = std::max(0, outgoing_space - wire_size_of<TransmitIP>());
     }
 
     read_data = nullptr;
     read_consumed = read_received = 0;
     int receive_size;
-    if (auto* receive = handle.decode_as<ReceiveIP>(&receive_size)) {
+    if (auto* receive = incoming.decode_as<ReceiveIP>(&receive_size)) {
       if (!memcmp(receive->source_ip, server.dest_ip, 4) &&
           receive->source_port == server.dest_port &&
           receive->protocol == server.protocol) {
@@ -64,11 +66,11 @@ class XBeeMQTTAdapterDef : public XBeeMQTTAdapter {
           read_received, read_received - read_consumed);
     }
 
-    if (write_filled > 0) emit->payload_size += write_filled;
+    if (write_filled > 0) outgoing->payload_size += write_filled;
     write_data = nullptr;
     write_filled = write_capacity = 0;
 
-    return (emit->payload_size > wire_size_of<TransmitIP>());
+    return (outgoing->payload_size > wire_size_of<TransmitIP>());
   }
 
   virtual void connect_network(
@@ -82,8 +84,29 @@ class XBeeMQTTAdapterDef : public XBeeMQTTAdapter {
 
   virtual mqtt_client* client() override { return &mqtt; }
 
+  void on_message(mqtt_response_publish const& publish) {
+    if (message_callback) message_callback(publish);
+  }
+
+  ssize_t pal_sendall(void const* buf, size_t len) {
+    int const send_size = std::min<int>(len, write_capacity - write_filled);
+    if (send_size <= 0) return 0;
+    memcpy(write_data + write_filled, buf, send_size);
+    write_filled += send_size;
+    return send_size;
+    // TODO: errors
+  }
+
+  ssize_t pal_recvall(void* buf, size_t len) {
+    int const recv_size = std::min<int>(len, read_received - read_consumed);
+    if (recv_size < 0) return 0;
+    memcpy(buf, read_data + read_consumed, recv_size);
+    read_consumed += recv_size;
+    return recv_size;
+    // TODO: errors
+  }
+
  private:
-  friend void on_message(void**, struct mqtt_response_publish *);
   friend ssize_t mqtt_pal_sendall(
       mqtt_pal_socket_handle h, void const* buf, size_t len, int flags);
   friend ssize_t mqtt_pal_recvall(
@@ -107,22 +130,19 @@ XBeeMQTTAdapter* make_xbee_mqtt_adapter(int tx_size, int rx_size) {
   return new XBeeMQTTAdapterDef(tx_size, rx_size);
 }
 
-extern "C"  {
+extern "C" {
   static void on_message(
-      void** state, struct mqtt_response_publish *publish) {
-    auto* self = reinterpret_cast<XBeeMQTTAdapterDef*>(*state);
-    if (self->message_callback) self->message_callback(*publish);
+      void** state, struct mqtt_response_publish* publish) {
+    reinterpret_cast<XBeeMQTTAdapterDef*>(*state)->on_message(*publish);
   }
 
   ssize_t mqtt_pal_sendall(
       mqtt_pal_socket_handle h, void const* buf, size_t len, int flags) {
-    auto* self = reinterpret_cast<XBeeMQTTAdapterDef*>(h);
-    return 0;
+    return reinterpret_cast<XBeeMQTTAdapterDef*>(h)->pal_sendall(buf, len);
   }
 
   ssize_t mqtt_pal_recvall(
       mqtt_pal_socket_handle h, void* buf, size_t len, int flags) {
-    auto* self = reinterpret_cast<XBeeMQTTAdapterDef*>(h);
-    return 0;
+    return reinterpret_cast<XBeeMQTTAdapterDef*>(h)->pal_recvall(buf, len);
   }
 }

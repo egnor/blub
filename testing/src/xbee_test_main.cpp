@@ -21,12 +21,13 @@ void loop() {
 
   auto const loop_millis = millis();
 
-  while (xbee_radio->maybe_receive_frame(&frame)) {
-    monitor->handle_frame(frame);
+  while (xbee_radio->poll_for_frame(&frame)) {
+    monitor->on_incoming(frame);
   }
 
-  while (monitor->maybe_emit_frame(xbee_radio->available_for_send(), &frame)) {
-    xbee_radio->send_frame(frame);
+  int const space = xbee_radio->outgoing_space();
+  while (monitor->maybe_make_outgoing(space, &frame)) {
+    xbee_radio->enqueue_outgoing(frame);
   }
 
   auto const& st = monitor->status();

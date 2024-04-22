@@ -4,7 +4,7 @@
   "description": "Project Blub shared embedded code utilities",
   "keywords": [],
   "dependencies": {
-    "MQTT-C": "symlink://../../MQTT-C",
+    "MQTT-C": "https://github.com/egnor/MQTT-C",
     "olikraus/U8g2": "^2.35.17",
     "rlogiacco/CircularBuffer": "^1.4.0",
     "Wire": "*"

@@ -32,9 +32,9 @@ class DummyStatus : public LittleStatus {
 
 class DummyXBee : public XBeeRadio {
   public:
-    virtual int available_for_send() const override { return 0; }
-    virtual void send_frame(XBeeAPI::Frame const&) override {}
-    virtual bool maybe_receive_frame(XBeeAPI::Frame*) override { return false; }
+    virtual int outgoing_space() const override { return 0; }
+    virtual void enqueue_outgoing(XBeeAPI::Frame const&) override {}
+    virtual bool poll_for_frame(XBeeAPI::Frame*) override { return false; }
     virtual HardwareSerial* raw_serial() const override { return nullptr; }
 };
 

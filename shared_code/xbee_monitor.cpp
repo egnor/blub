@@ -12,7 +12,7 @@ using namespace XBeeAPI;
 
 class XBeeMonitorDef : public XBeeMonitor {
  public:
-  virtual void handle_frame(Frame const& frame) override {
+  virtual void on_incoming(Frame const& frame) override {
     int extra;
     if (auto* r = frame.decode_as<ATCommandResponse>(&extra)) {
       if (r->frame_id < 128 || r->frame_id >= 128 + cyclics.size()) {
@@ -59,11 +59,11 @@ class XBeeMonitorDef : public XBeeMonitor {
     }
   }
 
-  virtual bool maybe_emit_frame(int available, Frame* frame) override {
-    if (available < wire_size_of<ATCommand>(1)) return false;
+  virtual bool maybe_make_outgoing(int space, Frame* out) override {
+    if (space < wire_size_of<ATCommand>(1)) return false;
 
     if (conf_carrier != UNKNOWN_PROFILE) {
-      auto* command = frame->setup_as<ATCommand>(1);
+      auto* command = out->setup_as<ATCommand>(1);
       command->frame_id = 0;  // No ack, we'll just poll immediately after
       memcpy(command->command, "CP", 2);
       command->data[0] = conf_carrier;
@@ -78,7 +78,7 @@ class XBeeMonitorDef : public XBeeMonitor {
     if (conf_apn[0]) {
       TL_SPAM("Requesting XBee APN \"%s\"", conf_apn);
       auto const apn_size = strlen(conf_apn);
-      auto* command = frame->setup_as<ATCommand>(apn_size);
+      auto* command = out->setup_as<ATCommand>(apn_size);
       command->frame_id = 0;  // No ack, we'll just poll immediately after
       memcpy(command->command, "AN", 2);
       memcpy(command->data, conf_apn, apn_size);
@@ -101,7 +101,7 @@ class XBeeMonitorDef : public XBeeMonitor {
     }
 
     if (next != nullptr) {
-      auto* command = frame->setup_as<ATCommand>();
+      auto* command = out->setup_as<ATCommand>();
       command->frame_id = 128 + (next - &cyclics[0]);
       memcpy(command->command, next->command, sizeof(command->command));
       next->next_millis = now + 10000;  // 20s poll (or status change)

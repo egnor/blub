@@ -48,8 +48,8 @@ class XBeeMonitor {
   };
 
   virtual ~XBeeMonitor() = default;
-  virtual void handle_frame(XBeeAPI::Frame const&) = 0;
-  virtual bool maybe_emit_frame(int available, XBeeAPI::Frame*) = 0;
+  virtual void on_incoming(XBeeAPI::Frame const&) = 0;
+  virtual bool maybe_make_outgoing(int space, XBeeAPI::Frame*) = 0;
 
   virtual Status const& status() const = 0;
   virtual void configure_carrier(CarrierProfile) = 0;

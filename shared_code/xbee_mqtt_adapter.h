@@ -12,9 +12,9 @@ class XBeeMQTTAdapter {
  public:
   virtual ~XBeeMQTTAdapter() {}
 
-  virtual bool handle_and_maybe_emit_frame(
-      XBeeAPI::Frame const& handle,
-      int available, XBeeAPI::Frame* emit) = 0;
+  virtual bool incoming_to_outgoing(
+      XBeeAPI::Frame const& incoming,
+      int outgoing_space, XBeeAPI::Frame* outgoing) = 0;
 
   virtual void connect_network(
       XBeeAPI::TransmitIP const& server,

@@ -11,11 +11,11 @@ class XBeeRadioDef : public XBeeRadio {
  public:
   XBeeRadioDef(HardwareSerial* s) : serial(s) {}
 
-  virtual int available_for_send() const override {
+  virtual int outgoing_space() const override {
     return state == API_MODE ? out_buf.available() : 0;
   }
 
-  virtual void send_frame(XBeeAPI::Frame const& frame) override {
+  virtual void enqueue_outgoing(XBeeAPI::Frame const& frame) override {
     if (state != API_MODE) {
       TL_PROBLEM("Outgoing XBee frame (0x%02x) before API ready, dropping");
       return;
@@ -28,11 +28,11 @@ class XBeeRadioDef : public XBeeRadio {
       return;
     }
 
-    auto const available = available_for_send();
-    if (frame.payload_size + 5 > available) {
+    auto const space = outgoing_space();
+    if (frame.payload_size + 5 > space) {
       TL_PROBLEM(
           "Outgoing XBee frame too big for buffer (%d > %d), dropping",
-          frame.payload_size + 5, available);
+          frame.payload_size + 5, space);
       return;
     }
 
@@ -54,7 +54,7 @@ class XBeeRadioDef : public XBeeRadio {
         frame.type, frame.payload_size);
   }
 
-  virtual bool maybe_receive_frame(XBeeAPI::Frame* frame) override {
+  virtual bool poll_for_frame(XBeeAPI::Frame* frame) override {
     auto const now = millis();
     auto const to_read = serial->available();
     for (int i = 0; i < to_read; ++i) {

@@ -12,9 +12,9 @@ namespace arduino { class HardwareSerial; }
 class XBeeRadio {
  public:
   virtual ~XBeeRadio() = default;
-  virtual int available_for_send() const = 0;
-  virtual void send_frame(XBeeAPI::Frame const&) = 0;
-  virtual bool maybe_receive_frame(XBeeAPI::Frame*) = 0;
+  virtual int outgoing_space() const = 0;
+  virtual void enqueue_outgoing(XBeeAPI::Frame const&) = 0;
+  virtual bool poll_for_frame(XBeeAPI::Frame*) = 0;
   virtual arduino::HardwareSerial* raw_serial() const = 0;
 };
 
