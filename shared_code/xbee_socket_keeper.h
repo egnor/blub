@@ -15,4 +15,4 @@ class XBeeSocketKeeper {
 };
 
 XBeeSocketKeeper* make_xbee_socket_keeper(
-    char const* host, int port, XBeeAPI::SocketConnect::Protocol proto);
+    char const* host, int port, XBeeAPI::SocketCreate::Protocol proto);

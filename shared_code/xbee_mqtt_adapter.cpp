@@ -5,7 +5,7 @@
 #include "tagged_logging.h"
 #include "xbee_mqtt_pal.h"
 
-TaggedLoggingContext TL_CONTEXT("xbee_mqtt_adapter");
+static const TaggedLoggingContext TL_CONTEXT("xbee_mqtt_adapter");
 
 using namespace XBeeAPI;
 
@@ -16,7 +16,7 @@ class XBeeMQTTAdapterDef : public XBeeMQTTAdapter {
   XBeeMQTTAdapterDef(
       int tx_size, int rx_size,
       std::function<void(mqtt_response_publish const&)> const& on_message) {
-    TL_NOTICE("Creating adapter: tx=%d rx=%d", tx_size, rx_size);
+    TL_NOTICE("Starting: tx=%d, rx=%d", tx_size, rx_size);
     tx_buf = new uint8_t[tx_buf_size = tx_size];
     rx_buf = new uint8_t[rx_buf_size = rx_size];
     message_callback = on_message;
@@ -25,7 +25,7 @@ class XBeeMQTTAdapterDef : public XBeeMQTTAdapter {
   }
 
   virtual ~XBeeMQTTAdapterDef() override {
-    TL_NOTICE("Destroying adapter");
+    TL_NOTICE("Destroying");
     delete[] tx_buf;
     delete[] rx_buf;
   }

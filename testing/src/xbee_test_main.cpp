@@ -5,6 +5,7 @@
 #include "little_status.h"
 #include "xbee_api.h"
 #include "xbee_radio.h"
+#include "xbee_socket_keeper.h"
 #include "xbee_status_monitor.h"
 
 #include "mqtt.h"
@@ -12,6 +13,7 @@
 static const TaggedLoggingContext TL_CONTEXT("xbee_test");
 
 static XBeeStatusMonitor* monitor = nullptr;
+static XBeeSocketKeeper* keeper = nullptr;
 
 static long last_loop_millis = 0;
 
@@ -23,10 +25,14 @@ void loop() {
 
   while (xbee_radio->poll_for_frame(&frame)) {
     monitor->on_incoming(frame);
+    keeper->on_incoming(frame);
   }
 
   int const space = xbee_radio->outgoing_space();
   while (monitor->maybe_make_outgoing(space, &frame)) {
+    xbee_radio->enqueue_outgoing(frame);
+  }
+  while (keeper->maybe_make_outgoing(space, &frame)) {
     xbee_radio->enqueue_outgoing(frame);
   }
 
@@ -69,4 +75,6 @@ void setup() {
   while (!Serial.dtr() && millis() < 2000) delay(10);
   blub_station_init("BLUB XBee Test");
   monitor = make_xbee_status_monitor();
+  keeper = make_xbee_socket_keeper(
+      "egnor-2020.ofb.net", 1883, XBeeAPI::SocketCreate::Protocol::TCP);
 }

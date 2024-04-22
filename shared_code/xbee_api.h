@@ -4,6 +4,8 @@
 
 #include <stdint.h>
 
+#include <new>
+
 #include "endian_types.h"
 
 namespace XBeeAPI {
