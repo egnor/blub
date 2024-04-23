@@ -35,7 +35,7 @@ class XBeeStatusMonitorDef : public XBeeStatusMonitor {
     }
 
     if (auto* modem = frame.decode_as<ModemStatus>()) {
-      TL_SPAM("Modem status %s", modem->status_text());
+      TL_NOTICE("Modem status %s", modem->status_text());
 
       // Immediately update the status, then re-poll for the "proper" status
       switch (modem->status) {
@@ -212,7 +212,7 @@ class XBeeStatusMonitorDef : public XBeeStatusMonitor {
   void handle_assoc(Cyclic*, ATCommandResponse const& r, int extra) {
     if (extra == 1) {
       stat.assoc_status = (AssociationStatus) r.data[0];
-      TL_SPAM("Assoc status %s", stat.assoc_text());
+      TL_NOTICE("Assoc status %s", stat.assoc_text());
     } else {
       TL_PROBLEM("Bad reply length (AI: %d != 1 byte)", extra);
     }

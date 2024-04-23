@@ -40,7 +40,7 @@ class XBeeMQTTAdapterDef : public XBeeMQTTAdapter {
     }
 
     if (auto* stat = incoming.decode_as<SocketCloseResponse>()) {
-      if (stat->socket == socket) {
+      if (stat->socket == socket && stat->status == SocketCloseResponse::OK) {
         TL_SPAM("Socket %d closed", socket);
         socket = -1;
       }
@@ -102,13 +102,15 @@ class XBeeMQTTAdapterDef : public XBeeMQTTAdapter {
     return (outgoing->payload_size > wire_size_of<SocketSend>());
   }
 
-  virtual void set_socket(int socket) override {
+  virtual void init_with_socket(int socket) override {
     TL_SPAM("Using socket %d", socket);
     this->socket = socket;
     if (socket >= 0) {
       mqtt_reinit(&mqtt, this, tx_buf, tx_buf_size, rx_buf, rx_buf_size);
     }
   }
+
+  virtual int active_socket() override { return socket; }
 
   virtual mqtt_client* client() override { return &mqtt; }
 
