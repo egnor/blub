@@ -30,7 +30,7 @@ class XBeeMQTTAdapterDef : public XBeeMQTTAdapter {
     delete[] rx_buf;
   }
 
-  virtual bool process_frame(
+  virtual bool incoming_to_outgoing(
       Frame const& incoming, int outgoing_space, Frame* outgoing) override {
     if (auto* stat = incoming.decode_as<SocketStatus>()) {
       if (stat->socket == socket && stat->status != SocketStatus::CONNECTED) {
@@ -110,7 +110,7 @@ class XBeeMQTTAdapterDef : public XBeeMQTTAdapter {
     }
   }
 
-  virtual int active_socket() override { return socket; }
+  virtual int active_socket() const override { return socket; }
 
   virtual mqtt_client* client() override { return &mqtt; }
 

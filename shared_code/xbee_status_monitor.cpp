@@ -202,7 +202,7 @@ class XBeeStatusMonitorDef : public XBeeStatusMonitor {
   void handle_config_cp(Cyclic* cyc, ATCommandResponse const& r, int extra) {
     if (extra == 1) {
       stat.carrier_profile = (CarrierProfile) r.data[0];
-      TL_SPAM("carrier profile %s", stat.carrier_profile_text());
+      TL_SPAM("Carrier profile %s", stat.carrier_profile_text());
       cyc->enabled = false;  // Won't change (unless we change it)
     } else if (extra != 0) {
       TL_PROBLEM("Bad reply length (CP: %d != 1 byte)", extra);

@@ -12,12 +12,12 @@ class XBeeMQTTAdapter {
  public:
   virtual ~XBeeMQTTAdapter() {}
 
-  virtual bool process_frame(
+  virtual bool incoming_to_outgoing(
       XBeeAPI::Frame const& incoming,
       int outgoing_space, XBeeAPI::Frame* outgoing) = 0;
 
-  virtual void set_socket(int socket) = 0;
-
+  virtual void init_with_socket(int socket) = 0;
+  virtual int active_socket() const = 0;
   virtual mqtt_client* client() = 0;
 };
 

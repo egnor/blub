@@ -32,6 +32,7 @@ namespace XBeeAPI {
       return new (out) PT{};
     }
 
+    void clear() { type = -1; payload_size = 0; }
     int wire_size() const { return payload_size + 5; }
   };
 
