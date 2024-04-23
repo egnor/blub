@@ -4,6 +4,7 @@
 #include "tagged_logging.h"
 #include "little_status.h"
 #include "xbee_api.h"
+#include "xbee_mqtt_adapter.h"
 #include "xbee_radio.h"
 #include "xbee_socket_keeper.h"
 #include "xbee_status_monitor.h"
@@ -14,26 +15,37 @@ static const TaggedLoggingContext TL_CONTEXT("xbee_test");
 
 static XBeeStatusMonitor* monitor = nullptr;
 static XBeeSocketKeeper* keeper = nullptr;
+static XBeeMQTTAdapter* mqtt = nullptr;
 
 static long last_loop_millis = 0;
 
+void on_message(mqtt_response_publish const& message) {
+  TL_NOTICE("MQTT message %s", message.topic);
+}
+
 void loop() {
   using namespace XBeeAPI;
-  static Frame frame;
+  static Frame in, out;
 
   auto const loop_millis = millis();
 
-  while (xbee_radio->poll_for_frame(&frame)) {
-    monitor->on_incoming(frame);
-    keeper->on_incoming(frame);
+  while (xbee_radio->poll_for_frame(&in)) {
+    monitor->on_incoming(in);
+    keeper->on_incoming(in);
+    if (mqtt->incoming_to_outgoing(in, xbee_radio->outgoing_space(), &out)) {
+      xbee_radio->enqueue_outgoing(out);
+    }
   }
 
-  int const space = xbee_radio->outgoing_space();
-  while (monitor->maybe_make_outgoing(space, &frame)) {
-    xbee_radio->enqueue_outgoing(frame);
+  in.clear();
+  while (mqtt->incoming_to_outgoing(in, xbee_radio->outgoing_space(), &out)) {
+    xbee_radio->enqueue_outgoing(out);
   }
-  while (keeper->maybe_make_outgoing(space, &frame)) {
-    xbee_radio->enqueue_outgoing(frame);
+  while (monitor->maybe_make_outgoing(xbee_radio->outgoing_space(), &out)) {
+    xbee_radio->enqueue_outgoing(out);
+  }
+  while (keeper->maybe_make_outgoing(xbee_radio->outgoing_space(), &out)) {
+    xbee_radio->enqueue_outgoing(out);
   }
 
   auto const& st = monitor->status();
@@ -77,4 +89,5 @@ void setup() {
   monitor = make_xbee_status_monitor();
   keeper = make_xbee_socket_keeper(
       "egnor-2020.ofb.net", 1883, XBeeAPI::SocketCreate::Protocol::TCP);
+  mqtt = make_xbee_mqtt_adapter(512, 512, on_message);
 }
