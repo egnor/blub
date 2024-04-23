@@ -58,7 +58,7 @@ class XBeeSocketKeeperDef : public XBeeSocketKeeper {
     if (auto* status = frame.decode_as<SocketStatus>()) {
       if (status->socket == socket_id) {
         if (status->status == SocketStatus::CONNECTED) {
-          TL_SPAM("Socket #%d connected OK", socket_id);
+          TL_NOTICE("Socket #%d connected OK", socket_id);
           next_step = IDLE;
         } else {
           TL_PROBLEM("Connection failed: %s", status->status_text());
@@ -72,7 +72,7 @@ class XBeeSocketKeeperDef : public XBeeSocketKeeper {
     if (auto* reply = frame.decode_as<SocketCloseResponse>()) {
       if (reply->socket == socket_id &&
           reply->status == SocketCloseResponse::OK) {
-        TL_SPAM("Socket #%d closed", socket_id);
+        TL_NOTICE("Socket #%d closed", socket_id);
         socket_id = -1;
         next_step = IDLE;
       }
@@ -129,7 +129,7 @@ class XBeeSocketKeeperDef : public XBeeSocketKeeper {
           connect->address_type = SocketConnect::TEXT;
           memcpy(connect->address, host, host_size);
           next_step = CONNECT_WAIT;
-          TL_SPAM(
+          TL_NOTICE(
               "Connecting #%d to %.*s:%d",
               socket_id, host_size, connect->address, port);
           return true;
@@ -144,7 +144,7 @@ class XBeeSocketKeeperDef : public XBeeSocketKeeper {
           close->frame_id = 1;
           close->socket = socket_id;
           next_step = CLOSE_WAIT;
-          TL_SPAM("Closing socket #%d", socket_id);
+          TL_NOTICE("Closing socket #%d", socket_id);
           return true;
         }
         break;
@@ -167,7 +167,9 @@ class XBeeSocketKeeperDef : public XBeeSocketKeeper {
   long next_retry_millis = 0;
   int socket_id = -1;
 
-  enum { IDLE, CREATE_WAIT, CONNECT, CONNECT_WAIT, CLOSE, CLOSE_WAIT } next_step = IDLE;
+  enum {
+    IDLE, CREATE_WAIT, CONNECT, CONNECT_WAIT, CLOSE, CLOSE_WAIT
+  } next_step = IDLE;
 };
 
 XBeeSocketKeeper* make_xbee_socket_keeper(

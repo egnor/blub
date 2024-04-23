@@ -2,6 +2,8 @@
 
 #include <algorithm>
 
+#include <Arduino.h>
+
 #include "tagged_logging.h"
 #include "xbee_mqtt_pal.h"
 
@@ -96,17 +98,19 @@ class XBeeMQTTAdapterDef : public XBeeMQTTAdapter {
     if (write_filled > 0) {
       TL_SPAM(">> %d bytes sending to XBee", write_filled);
       outgoing->payload_size += write_filled;
+      return true;
+    } else {
+      return false;
     }
-    write_data = nullptr;
-    write_filled = write_capacity = 0;
-    return (outgoing->payload_size > wire_size_of<SocketSend>());
   }
 
-  virtual void init_with_socket(int socket) override {
-    TL_SPAM("Using socket %d", socket);
-    this->socket = socket;
-    if (socket >= 0) {
-      mqtt_reinit(&mqtt, this, tx_buf, tx_buf_size, rx_buf, rx_buf_size);
+  virtual void use_socket(int socket) override {
+    if (socket != this->socket) {
+      TL_NOTICE("Init with socket #%d", socket);
+      this->socket = socket;
+      if (socket >= 0) {
+        mqtt_reinit(&mqtt, this, tx_buf, tx_buf_size, rx_buf, rx_buf_size);
+      }
     }
   }
 
@@ -125,7 +129,7 @@ class XBeeMQTTAdapterDef : public XBeeMQTTAdapter {
     if (send_size <= 0) return 0;
     memcpy(write_data + write_filled, buf, send_size);
     write_filled += send_size;
-    TL_SPAM(">>> %d/%d bytes written by MQTT client", send_size, len);
+    TL_SPAM(">>> %d/%d bytes MQTT client => XBee", send_size, len);
     return send_size;
   }
 
@@ -135,7 +139,7 @@ class XBeeMQTTAdapterDef : public XBeeMQTTAdapter {
     if (recv_size <= 0) return 0;
     memcpy(buf, read_data + read_consumed, recv_size);
     read_consumed += recv_size;
-    TL_SPAM("<<< %d/%d bytes read by MQTT client", recv_size, len);
+    TL_SPAM("<<< %d/%d bytes MQTT client <= XBee", recv_size, len);
     return recv_size;
   }
 
@@ -165,6 +169,10 @@ XBeeMQTTAdapter* make_xbee_mqtt_adapter(
 }
 
 extern "C" {
+  mqtt_pal_time_t MQTT_PAL_TIME() {
+    return static_cast<mqtt_pal_time_t>(millis() / 1000);
+  }
+
   static void on_message(
       void** state, struct mqtt_response_publish* publish) {
     reinterpret_cast<XBeeMQTTAdapterDef*>(*state)->on_message(*publish);

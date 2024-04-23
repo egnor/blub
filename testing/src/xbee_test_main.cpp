@@ -20,7 +20,7 @@ static XBeeMQTTAdapter* mqtt = nullptr;
 static long last_loop_millis = 0;
 
 void on_message(mqtt_response_publish const& message) {
-  TL_NOTICE("MQTT message %s", message.topic);
+  TL_NOTICE("MQTT message %.*s", message.topic_name_size, message.topic_name);
 }
 
 void loop() {
@@ -46,6 +46,17 @@ void loop() {
   }
   while (keeper->maybe_make_outgoing(xbee_radio->outgoing_space(), &out)) {
     xbee_radio->enqueue_outgoing(out);
+  }
+
+  if (keeper->socket() != mqtt->active_socket()) {
+    mqtt->use_socket(keeper->socket());
+    mqtt_connect(
+        mqtt->client(), "BLUB XBee Test",
+        nullptr, nullptr, 0,
+        "blub", "blub",
+        MQTT_CONNECT_CLEAN_SESSION, 400);
+    mqtt_publish(
+        mqtt->client(), "blub/test", "Hello World!", 12, MQTT_PUBLISH_QOS_1);
   }
 
   auto const& st = monitor->status();
