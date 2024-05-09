@@ -13,7 +13,7 @@
 
 static const TaggedLoggingContext TL_CONTEXT("blub_station");
 
-static constexpr int SCREEN_I2C_ADDR = 0x3C;
+static constexpr int SCREEN_I2C_ADDR = 0x3D;
 static constexpr int SCREEN_NRESET_PIN = 10;
 
 static constexpr int XBEE_NRESET_PIN = 11;
@@ -102,6 +102,7 @@ void blub_station_init(char const* name) {
 
   // If the XBee is present, it will force the radio-to-CPU line high
   pinMode(FROM_XBEE_PIN, INPUT_PULLDOWN);
+  delay(1);
   if (digitalRead(FROM_XBEE_PIN) == HIGH) {
     TL_SPAM("XBee found (from=%d to=%d)", FROM_XBEE_PIN, TO_XBEE_PIN);
     if (!Serial1.setPinout(TO_XBEE_PIN, FROM_XBEE_PIN)) {

@@ -28,5 +28,10 @@ _autosave-*
 *.drl
 *.kicad_prl
 *.lck
+*.tmp
+*.old
+*_old
 fab/
 plots/
+jlcpcb/
+production/
