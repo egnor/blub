@@ -4,7 +4,6 @@
 #include <cstdarg>
 #include <cstring>
 
-// This file only uses u8g2.h, but pio won't find the library based on that?
 #include <U8g2lib.h>
 
 #include "tagged_logging.h"

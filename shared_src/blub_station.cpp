@@ -2,8 +2,6 @@
 
 #include <Arduino.h>
 #include <tusb.h>
-
-// This file only uses u8g2.h, but pio won't find the library based on that?
 #include <U8g2lib.h>
 #include <Wire.h>
 

@@ -17,11 +17,11 @@ struct meter {
   std::optional<Adafruit_INA228> driver;
 };
 
-std::array<meter, 3> meters({
+std::array<meter, 3> meters{{
   {INA228_I2CADDR_DEFAULT, "Load"},
   {INA228_I2CADDR_DEFAULT + 1, "PPT"},
   {INA228_I2CADDR_DEFAULT + 4, "Panel"},
-});
+}};
 
 void loop() {
   TL_SPAM("LOOP");
