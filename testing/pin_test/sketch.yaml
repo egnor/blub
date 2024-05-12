@@ -2,7 +2,7 @@ default_profile: default
 
 profiles:
   default:
-    fqbn: rp2040:rp2040:adafruit_feather_rfm
+    fqbn: rp2040:rp2040:adafruit_feather_rfm:dbgport=Serial,dbglvl=All
     platforms:
       - platform: rp2040:rp2040 (3.8.0)
         platform_index_url: https://github.com/earlephilhower/arduino-pico/releases/download/global/package_rp2040_index.json
