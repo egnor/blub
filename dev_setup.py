@@ -11,7 +11,7 @@ from pathlib import Path
 
 # GENERAL BUILD / DEPENDENCY STRATEGY
 # - Use Mise (mise.jdx.dev) to get Python and make a venv (see .mise.toml)
-# - Use pip (pypi.org) in that venv to install Python tools (platformio, etc.)
+# - Use pip (pypi.org) in that venv to install Python tools
 
 def run_shell(*av, **kw):
     av = [str(a) for a in av]
@@ -29,9 +29,9 @@ if not shutil.which("mise"):
 
 run_shell("mise", "install")
 
-print(f"\n➡️ Python setup")
-run_shell("pip", "install", "-e", ".")
-
 print(f"\n➡️ Git setup")
 run_shell("git", "lfs", "install", "--local")
 run_shell("git", "lfs", "pull")
+
+print(f"\n➡️ Python setup")
+run_shell("pip", "install", "-e", ".")
