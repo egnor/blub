@@ -1,15 +1,13 @@
 #include <Arduino.h>
 
-#include "blub_station.h"
-#include "tagged_logging.h"
-#include "little_status.h"
-#include "xbee_api.h"
-#include "xbee_mqtt_adapter.h"
-#include "xbee_radio.h"
-#include "xbee_socket_keeper.h"
-#include "xbee_status_monitor.h"
-
-#include "mqtt.h"
+#include "src/blub_station.h"
+#include "src/tagged_logging.h"
+#include "src/little_status.h"
+#include "src/xbee_api.h"
+#include "src/xbee_mqtt_adapter.h"
+#include "src/xbee_radio.h"
+#include "src/xbee_socket_keeper.h"
+#include "src/xbee_status_monitor.h"
 
 static const TaggedLoggingContext TL_CONTEXT("xbee_test");
 
