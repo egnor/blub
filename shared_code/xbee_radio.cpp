@@ -3,7 +3,7 @@
 #include <Arduino.h>
 #include <CircularBuffer.hpp>
 
-#include <tagged_logging.h>
+#include "tagged_logging.h"
 
 static const TaggedLoggingContext TL_CONTEXT("xbee_radio");
 

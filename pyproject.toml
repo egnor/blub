@@ -10,7 +10,6 @@ dependencies = [
   "marimo",
   "piexif",
   "pint",
-  "platformio",
   "pydantic",
   "pyserial",
 ]

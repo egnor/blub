@@ -4,8 +4,8 @@
 
 #include <Arduino.h>
 
+#include "MQTT-C/mqtt_pal.h"
 #include "tagged_logging.h"
-#include "xbee_mqtt_pal.h"
 
 static const TaggedLoggingContext TL_CONTEXT("xbee_mqtt_adapter");
 

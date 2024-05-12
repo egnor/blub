@@ -1,8 +1,9 @@
-// *C-compatible* header file for an MQTT-C Platform Abstraction Layer (PAL).
-// The main platformio.ini must include "-DMQTTC_PAL_FILE=xbee_mqtt_pal.h"
+// *C-compatible* header file for the MQTT-C Platform Abstraction Layer (PAL)
+// provided by XBeeMqttAdapter (xbee_mqtt_adapter.cpp).
 // See: https://liambindle.ca/MQTT-C/group__pal.html
 
-#pragma once
+#ifndef MQTT_PAL_H  // #pragma once breaks with macro-based includes?
+#define MQTT_PAL_H
 
 // MQTT-C requires some definitions which are present in these headers
 #include <limits.h>
@@ -40,3 +41,5 @@ static uint32_t MQTT_PAL_NTOHL(uint32_t x) { return MQTT_PAL_HTONL(x); }
 #if defined(__cplusplus)
 }
 #endif
+
+#endif  // XBEE_MQTT_PAL_H

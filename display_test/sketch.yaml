@@ -1,0 +1,11 @@
+default_profile: default
+
+profiles:
+  default:
+    fqbn: rp2040:rp2040:adafruit_feather_rfm
+    platforms:
+      - platform: rp2040:rp2040 (3.8.0)
+        platform_index_url: https://github.com/earlephilhower/arduino-pico/releases/download/global/package_rp2040_index.json
+    libraries:
+      - U8g2 (2.34.22)
+      - CircularBuffer (1.4.0)

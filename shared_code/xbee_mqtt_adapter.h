@@ -4,8 +4,7 @@
 
 #include <functional>
 
-#include <mqtt.h>
-
+#include "MQTT-C/mqtt.h"
 #include "xbee_api.h"
 
 class XBeeMQTTAdapter {
