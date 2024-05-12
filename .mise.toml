@@ -10,6 +10,5 @@ experimental = true
 python_venv_auto_create = true
 
 [env]
-ARDUINO_DIRECTORIES_DATA = "{{config_root}}/build/arduino_data"
-ARDUINO_DIRECTORIES_USER = "{{config_root}}/build/arduino_user"
+ARDUINO_DIRECTORIES_DATA = "{{config_root}}/build/arduino"
 ARDUINO_LIBRARY_ENABLE_UNSAFE_INSTALL = "true"
