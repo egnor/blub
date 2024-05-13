@@ -35,3 +35,7 @@ run_shell("git", "lfs", "pull")
 
 print(f"\n➡️ Python setup")
 run_shell("pip", "install", "-e", ".")
+
+print(f"\n➡️ Arduino setup")
+run_shell("arduino-cli", "core", "update-index")
+run_shell("arduino-cli", "core", "install", "rp2040:rp2040")

@@ -15,7 +15,7 @@ class XBeeRadioDef : public XBeeRadio {
     return state == API_MODE ? out_buf.available() : 0;
   }
 
-  virtual void enqueue_outgoing(XBeeAPI::Frame const& frame) override {
+  virtual void add_outgoing(XBeeAPI::Frame const& frame) override {
     if (state != API_MODE) {
       TL_PROBLEM("Outgoing frame (0x%02x) queued before API ready, dropping");
       return;

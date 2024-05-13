@@ -13,7 +13,7 @@ class XBeeRadio {
  public:
   virtual ~XBeeRadio() = default;
   virtual int outgoing_space() const = 0;
-  virtual void enqueue_outgoing(XBeeAPI::Frame const&) = 0;
+  virtual void add_outgoing(XBeeAPI::Frame const&) = 0;
   virtual bool poll_for_frame(XBeeAPI::Frame*) = 0;
   virtual arduino::HardwareSerial* raw_serial() const = 0;
 };

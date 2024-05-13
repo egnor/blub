@@ -110,6 +110,7 @@ class XBeeMQTTAdapterDef : public XBeeMQTTAdapter {
       this->socket = socket;
       if (socket >= 0) {
         mqtt_reinit(&mqtt, this, tx_buf, tx_buf_size, rx_buf, rx_buf_size);
+        mqtt.typical_response_time = -1.0f;
       }
     }
   }
@@ -170,7 +171,7 @@ XBeeMQTTAdapter* make_xbee_mqtt_adapter(
 
 extern "C" {
   mqtt_pal_time_t MQTT_PAL_TIME() {
-    return static_cast<mqtt_pal_time_t>(millis() / 1000);
+    return millis() * 1e-3f;
   }
 
   static void on_message(

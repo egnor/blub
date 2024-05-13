@@ -31,7 +31,7 @@ class DummyStatus : public LittleStatus {
 class DummyXBee : public XBeeRadio {
   public:
     virtual int outgoing_space() const override { return 0; }
-    virtual void enqueue_outgoing(XBeeAPI::Frame const&) override {}
+    virtual void add_outgoing(XBeeAPI::Frame const&) override {}
     virtual bool poll_for_frame(XBeeAPI::Frame*) override { return false; }
     virtual HardwareSerial* raw_serial() const override { return nullptr; }
 };

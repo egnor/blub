@@ -10,7 +10,8 @@ class XBeeSocketKeeper {
   virtual void on_incoming(XBeeAPI::Frame const&) = 0;
   virtual bool maybe_make_outgoing(int space, XBeeAPI::Frame*) = 0;
 
-  virtual int socket() const = 0;      // -1 if not connected
+  virtual int socket() const = 0;  // -1 if not connected
+  virtual void reconnect() = 0;    // Disconnect and reconnect
 };
 
 XBeeSocketKeeper* make_xbee_socket_keeper(

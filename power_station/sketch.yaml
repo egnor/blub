@@ -9,5 +9,6 @@ profiles:
     libraries:
       - Adafruit BusIO (1.16.0)
       - Adafruit INA228 Library (1.0.0)
+      - ArduinoJson (7.0.4)
       - CircularBuffer (1.4.0)
       - U8g2 (2.34.22)

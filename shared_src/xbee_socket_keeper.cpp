@@ -37,7 +37,7 @@ class XBeeSocketKeeperDef : public XBeeSocketKeeper {
         } else {
           TL_PROBLEM("Socket creation failed: %s", reply->status_text());
           socket_id = -1;
-          next_step = IDLE;
+          next_step = READY;
         }
       }
       return;
@@ -59,11 +59,11 @@ class XBeeSocketKeeperDef : public XBeeSocketKeeper {
       if (status->socket == socket_id) {
         if (status->status == SocketStatus::CONNECTED) {
           TL_NOTICE("Socket #%d connected OK", socket_id);
-          next_step = IDLE;
+          next_step = READY;
         } else {
           TL_PROBLEM("Connection failed: %s", status->status_text());
           socket_id = -1;  // Non-CONNECTED SocketStatus means it's closed
-          next_step = IDLE;
+          next_step = READY;
         }
       }
       return;
@@ -74,7 +74,7 @@ class XBeeSocketKeeperDef : public XBeeSocketKeeper {
           reply->status == SocketCloseResponse::OK) {
         TL_NOTICE("Socket #%d closed", socket_id);
         socket_id = -1;
-        next_step = IDLE;
+        next_step = READY;
       }
       return;
     }
@@ -102,7 +102,7 @@ class XBeeSocketKeeperDef : public XBeeSocketKeeper {
 
   virtual bool maybe_make_outgoing(int space, XBeeAPI::Frame* frame) override {
     switch (next_step) {
-      case IDLE:
+      case READY:
         if (socket_id < 0 && network_up &&
             space >= wire_size_of<SocketCreate>()) {
           auto const now = millis();
@@ -120,7 +120,7 @@ class XBeeSocketKeeperDef : public XBeeSocketKeeper {
 
       case CONNECT:
         if (socket_id < 0) {
-          next_step = IDLE;
+          next_step = READY;
         } else if (space >= wire_size_of<SocketConnect>(host_size)) {
           auto* connect = frame->setup_as<SocketConnect>(host_size);
           connect->frame_id = 1;
@@ -138,7 +138,7 @@ class XBeeSocketKeeperDef : public XBeeSocketKeeper {
 
       case CLOSE:
         if (socket_id < 0) {
-          next_step = IDLE;
+          next_step = READY;
         } else if (space >= wire_size_of<SocketClose>()) {
           auto* close = frame->setup_as<SocketClose>();
           close->frame_id = 1;
@@ -154,7 +154,13 @@ class XBeeSocketKeeperDef : public XBeeSocketKeeper {
   }
 
   virtual int socket() const override {
-    return next_step == IDLE ? socket_id : -1;
+    return next_step == READY ? socket_id : -1;
+  }
+
+  virtual void reconnect() override {
+    if (next_step == READY && socket_id >= 0) {
+      next_step = CLOSE;
+    }
   }
 
  private:
@@ -168,8 +174,8 @@ class XBeeSocketKeeperDef : public XBeeSocketKeeper {
   int socket_id = -1;
 
   enum {
-    IDLE, CREATE_WAIT, CONNECT, CONNECT_WAIT, CLOSE, CLOSE_WAIT
-  } next_step = IDLE;
+    READY, CREATE_WAIT, CONNECT, CONNECT_WAIT, CLOSE, CLOSE_WAIT
+  } next_step = READY;
 };
 
 XBeeSocketKeeper* make_xbee_socket_keeper(

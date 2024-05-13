@@ -31,19 +31,19 @@ void loop() {
     monitor->on_incoming(in);
     keeper->on_incoming(in);
     if (mqtt->incoming_to_outgoing(in, xbee_radio->outgoing_space(), &out)) {
-      xbee_radio->enqueue_outgoing(out);
+      xbee_radio->add_outgoing(out);
     }
   }
 
   in.clear();
   while (mqtt->incoming_to_outgoing(in, xbee_radio->outgoing_space(), &out)) {
-    xbee_radio->enqueue_outgoing(out);
+    xbee_radio->add_outgoing(out);
   }
   while (monitor->maybe_make_outgoing(xbee_radio->outgoing_space(), &out)) {
-    xbee_radio->enqueue_outgoing(out);
+    xbee_radio->add_outgoing(out);
   }
   while (keeper->maybe_make_outgoing(xbee_radio->outgoing_space(), &out)) {
-    xbee_radio->enqueue_outgoing(out);
+    xbee_radio->add_outgoing(out);
   }
 
   if (keeper->socket() != mqtt->active_socket()) {

@@ -27,7 +27,7 @@ static void MQTT_PAL_MUTEX_INIT(mqtt_pal_mutex_t*) {}
 static void MQTT_PAL_MUTEX_LOCK(mqtt_pal_mutex_t*) {}
 static void MQTT_PAL_MUTEX_UNLOCK(mqtt_pal_mutex_t*) {}
 
-typedef long mqtt_pal_time_t;
+typedef float mqtt_pal_time_t;
 mqtt_pal_time_t MQTT_PAL_TIME(void);
 
 static uint16_t MQTT_PAL_HTONS(uint16_t x) { return (x >> 8) | (x << 8); }
