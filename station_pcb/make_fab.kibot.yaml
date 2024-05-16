@@ -9,19 +9,19 @@ import:
 
 preflight:
   erc_warnings: true
-  run_drc: true
-  run_erc: true
-  filters:
-    - filter: "KiCAD issue, eg. CH340C"
-      error: "pin_to_pin"
-      regex: "Power output and Power output are connected"
-    - filter: "KiCAD issue, eg. USB_C_Receptacle_HCTL_HC-TYPE-C-16P-01A"
-      error: "footprint_type_mismatch"
+  drc:
+    filters:
+      - filter: "KiCAD issue, eg. CH340C"
+        error: "pin_to_pin"
+        regex: "Power output and Power output are connected"
+      - filter: "KiCAD issue, eg. USB_C_Receptacle_HCTL_HC-TYPE-C-16P-01A"
+        error: "footprint_type_mismatch"
+  erc: true
 
 global:
   out_dir: "fab"
   filters:
-    - filter: "Nuisance warning about null environment.vars"
+    - filter: "Nuisance warning about null environment vars"
       error: "W009"
     - filter: "KiBot has weird rules about component values"
       error: "W020"

@@ -14,3 +14,6 @@ python_venv_auto_create = true
 ARDUINO_BOARD_MANAGER_ADDITIONAL_URLS = "file://{{config_root}}/package_rp2040_index.json"
 ARDUINO_DIRECTORIES_DATA = "{{config_root}}/build/arduino"
 ARDUINO_LIBRARY_ENABLE_UNSAFE_INSTALL = "true"
+
+[tasks.testest]
+run = 'echo hello'

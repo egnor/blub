@@ -163,16 +163,16 @@ static void update_screen() {
 
 static void update_mqtt() {
   JsonDocument doc;
-  doc["uptime"] = std::round(millis() * 1e-3f);
+  doc["uptime"] = std::round(millis() * 1e-2f) * 0.1;
 
   auto json_meters = doc["power"];
   for (auto& meter : meters) {
     if (!meter.driver) continue;
     auto json_meter = json_meters[meter.name];
-    json_meter["V"] = std::round(meter.driver->readBusVoltage()) * 1e-3f;
-    json_meter["A"] = std::round(meter.driver->readCurrent()) * 1e-3f;
-    json_meter["J"] = std::round(meter.driver->readEnergy() * 10) * 0.1f;
-    json_meter["C"] = std::round(meter.driver->readDieTemp() * 10) * 0.1f;
+    json_meter["V"] = std::round(meter.driver->readBusVoltage()) * 1e-3;
+    json_meter["A"] = std::round(meter.driver->readCurrent()) * 1e-3;
+    json_meter["J"] = std::round(meter.driver->readEnergy() * 10) * 0.1;
+    json_meter["C"] = std::round(meter.driver->readDieTemp() * 10) * 0.1;
   }
 
   auto const& xst = xbee_monitor->status();
