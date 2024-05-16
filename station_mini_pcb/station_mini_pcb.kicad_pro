@@ -447,7 +447,7 @@
     "pinned_symbol_libs": []
   },
   "meta": {
-    "filename": "station_pcb.kicad_pro",
+    "filename": "station_mini_pcb.kicad_pro",
     "version": 1
   },
   "net_settings": {

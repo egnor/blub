@@ -31,7 +31,7 @@
 			)
 		)
 	)
-	(property "Footprint" ""
+	(property "Footprint" "ScrewTerminals_Dibo_3.81mm_2p"
 		(at 0 0 0)
 		(unlocked yes)
 		(layer "F.Fab")
