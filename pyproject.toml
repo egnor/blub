@@ -7,10 +7,8 @@ version = "0.1"
 
 # Dependencies needed at runtime
 dependencies = [
-  "marimo",
   "piexif",
   "pint",
-  "pydantic",
   "pyserial",
 ]
 
