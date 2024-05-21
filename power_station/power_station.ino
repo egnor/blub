@@ -21,6 +21,7 @@ static XBeeStatusMonitor* xbee_monitor = nullptr;
 static XBeeSocketKeeper* socket_keeper = nullptr;
 static XBeeMQTTAdapter* mqtt = nullptr;
 
+static long last_socket_millis = 0;
 static long next_mqtt_millis = 0;
 static long next_screen_millis = 0;
 static long mqtt_connect_millis = 0;
@@ -72,6 +73,15 @@ static void poll_xbee() {
     TL_PROBLEM("MQTT error: %s", mqtt_error_str(mqtt->client()->error));
     socket_keeper->reconnect();
   }
+
+  if (socket_keeper->socket() >= 0) {
+    last_socket_millis = millis();
+  } else if ((millis() - last_socket_millis) > 10 * 600 * 1000) {
+    TL_PROBLEM("No socket for 10 minutes, rebooting");
+    status_screen->line_printf(0, "\f9\bNO SOCKET - REBOOTING");
+    delay(1000);
+    rp2040.reboot();
+  }
 }
 
 static void update_screen() {
@@ -119,9 +129,7 @@ static void update_screen() {
   status_screen->line_printf(ln++, "\f3 ");
 
   auto const& xst = xbee_monitor->status();
-  if (!xbee_radio->raw_serial()) {
-    status_screen->line_printf(ln++, "\f9No XBee found");
-  } else if (!xst.hardware_ver) {
+  if (!xst.hardware_ver) {
     status_screen->line_printf(ln++, "\f9No XBee status");
   } else {
     status_screen->line_printf(
@@ -192,6 +200,7 @@ static void update_mqtt() {
 }
 
 void loop() {
+  rp2040.wdt_reset();
   poll_xbee();
 
   int const now = millis();
@@ -208,7 +217,8 @@ void loop() {
   // Reboot before millis rollover
   if (now > 0x7FFFFFFF - 1000) {
     TL_NOTICE("Rebooting before millis rollover!");
-    delay(100);
+    status_screen->line_printf(0, "\f9\bROLLOVER - REBOOTING");
+    delay(1000);
     rp2040.reboot();
   }
 
@@ -230,10 +240,18 @@ void setup() {
     }
   }
 
+  if (!xbee_radio->raw_serial()) {
+    TL_PROBLEM("No XBee found, rebooting");
+    status_screen->line_printf(0, "\f9\bNO XBEE - REBOOTING");
+    delay(1000);
+    rp2040.reboot();
+  }
+
   xbee_monitor = make_xbee_status_monitor();
   socket_keeper = make_xbee_socket_keeper(
       "egnor-2020.ofb.net", 1883, XBeeAPI::SocketCreate::Protocol::TCP);
   mqtt = make_xbee_mqtt_adapter(512, 512, on_mqtt_incoming);
 
-  next_mqtt_millis = next_screen_millis = millis();
+  next_mqtt_millis = next_screen_millis = last_socket_millis = millis();
+  rp2040.wdt_begin(5000);  // 5 second on-chip hardware watchdog (pet in loop())
 }

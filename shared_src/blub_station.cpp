@@ -76,13 +76,13 @@ void blub_station_init(char const* name) {
   Wire.beginTransmission(SCREEN_I2C_ADDR);
   auto const i2c_status = Wire.endTransmission();
   if (i2c_status == 2) {
-    TL_PROBLEM("No screen found (I2C addr 0x%x)", SCREEN_I2C_ADDR);
+    TL_NOTICE("No screen found (I2C addr 0x%x)", SCREEN_I2C_ADDR);
     status_screen = new DummyStatus();
   } else if (i2c_status != 0) {
     TL_PROBLEM("Error %d probing screen (0x%x)", i2c_status, SCREEN_I2C_ADDR);
     status_screen = new DummyStatus();
   } else {
-    TL_SPAM("Screen found (I2C addr 0x%x)", SCREEN_I2C_ADDR);
+    TL_NOTICE("🖥️ Screen found (I2C addr 0x%x)", SCREEN_I2C_ADDR);
     u8g2_Setup_ssd1306_i2c_128x64_noname_f(
         &screen_driver, U8G2_R0,
         u8x8_byte_arduino_hw_i2c, u8x8_gpio_and_delay_arduino
@@ -102,14 +102,14 @@ void blub_station_init(char const* name) {
   pinMode(FROM_XBEE_PIN, INPUT_PULLDOWN);
   delay(1);
   if (digitalRead(FROM_XBEE_PIN) == HIGH) {
-    TL_SPAM("XBee found (from=%d to=%d)", FROM_XBEE_PIN, TO_XBEE_PIN);
+    TL_NOTICE("📻 XBee found (from=%d to=%d)", FROM_XBEE_PIN, TO_XBEE_PIN);
     if (!Serial1.setPinout(TO_XBEE_PIN, FROM_XBEE_PIN)) {
       TL_FATAL("XBee pinout error (TX=%d RX=%d)", TO_XBEE_PIN, FROM_XBEE_PIN);
     }
     if (!Serial1.setFIFOSize(512)) TL_FATAL("XBee FIFO error");
     xbee_radio = make_xbee_radio(&Serial1);
   } else {
-    TL_SPAM("No XBee found (from=%d)", FROM_XBEE_PIN);
+    TL_NOTICE("No XBee found (from=%d)", FROM_XBEE_PIN);
     xbee_radio = new DummyXBee();
   }
 }
