@@ -76,7 +76,7 @@ static void poll_xbee() {
 
   if (socket_keeper->socket() >= 0) {
     last_socket_millis = millis();
-  } else if ((millis() - last_socket_millis) > 10 * 600 * 1000) {
+  } else if ((millis() - last_socket_millis) > 10 * 60 * 1000) {
     TL_PROBLEM("No socket for 10 minutes, rebooting");
     status_screen->line_printf(0, "\f9\bNO SOCKET - REBOOTING");
     delay(1000);
