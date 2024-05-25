@@ -205,7 +205,7 @@ class XBeeRadioDef : public XBeeRadio {
   }
 
  private:
-  enum Status {
+  enum State {
     START,
     INIT_9600_DELAY_PLUSPLUSPLUS,
     INIT_9600_EXPECT_OK,
@@ -218,7 +218,7 @@ class XBeeRadioDef : public XBeeRadio {
   };
 
   HardwareSerial* serial = nullptr;
-  Status state = START;
+  State state = START;
   long state_millis = 0;
   CircularBuffer<uint8_t, XBeeAPI::MAX_PAYLOAD + 5> in_buf;
   CircularBuffer<uint8_t, XBeeAPI::MAX_PAYLOAD + 5> out_buf;
