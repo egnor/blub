@@ -24,7 +24,7 @@ static XBeeMQTTAdapter* mqtt = nullptr;
 static long last_socket_millis = 0;
 static long next_mqtt_millis = 0;
 static long next_screen_millis = 0;
-static long mqtt_connect_millis = 0;
+static long mqtt_ok_millis = 0;
 
 struct meter {
   int i2c_address;
@@ -66,7 +66,6 @@ static void poll_xbee() {
         nullptr, nullptr, 0,
         "blub", "blub",
         MQTT_CONNECT_CLEAN_SESSION, 400);
-    mqtt_connect_millis = millis();
   }
 
   if (mqtt->active_socket() >= 0 && mqtt->client()->error != MQTT_OK) {
@@ -74,13 +73,30 @@ static void poll_xbee() {
     socket_keeper->reconnect();
   }
 
-  if (socket_keeper->socket() >= 0) {
+  if (socket_keeper->socket() < 0) {
+    mqtt_ok_millis = millis();  // Time MQTT only after socket connects
+
+    if ((millis() - last_socket_millis) > 10 * 60 * 1000) {
+      TL_PROBLEM("No socket for 10 minutes, rebooting");
+      status_screen->line_printf(0, "\f9\bNO SOCKET - REBOOTING");
+      delay(1000);
+      rp2040.reboot();
+    }
+  } else {
     last_socket_millis = millis();
-  } else if ((millis() - last_socket_millis) > 10 * 60 * 1000) {
-    TL_PROBLEM("No socket for 10 minutes, rebooting");
-    status_screen->line_printf(0, "\f9\bNO SOCKET - REBOOTING");
-    delay(1000);
-    rp2040.reboot();
+
+    if (
+        mqtt->active_socket() >= 0 &&
+        mqtt->client()->error == MQTT_OK &&
+        mqtt->client()->typical_response_time >= 0
+    ) {
+      mqtt_ok_millis = millis();
+    } else if ((millis() - mqtt_ok_millis) > 10 * 60 * 1000) {
+      TL_PROBLEM("No MQTT for 10 minutes, rebooting");
+      status_screen->line_printf(0, "\f9\bNO MQTT - REBOOTING");
+      delay(1000);
+      rp2040.reboot();
+    }
   }
 }
 
@@ -155,14 +171,21 @@ static void update_screen() {
   }
   status_screen->line_printf(ln++, "\f3 ");
 
-  if (mqtt->active_socket() < 0) {
-    status_screen->line_printf(ln++, "\f9\bMQTT\b socket not connected");
+  auto const now = millis();
+  int const sock_sec = (now - last_socket_millis) / 1000;
+  int const mqtt_sec = (now - mqtt_ok_millis) / 1000;
+  if (socket_keeper->socket() < 0) {
+    status_screen->line_printf(
+      ln++, "\f9\bSocket\b not connected (%ds)", sock_sec);
+  } else if (mqtt->active_socket() < 0) {
+    status_screen->line_printf(ln++, "\f9\bMQTT\b not active (%ds)", mqtt_sec);
   } else if (mqtt->client()->error != MQTT_OK) {
     char const* error = mqtt_error_str(mqtt->client()->error);
     if (strncmp(error, "MQTT_", 5)) error += 5;
-    status_screen->line_printf(ln++, "\f9\bMQTT\b %s", error);
+    status_screen->line_printf(ln++, "\f9\bMQTT\b %s (%ds)", error, mqtt_sec);
   } else if (mqtt->client()->typical_response_time < 0) {
-    status_screen->line_printf(ln++, "\f9\bMQTT\b protocol connecting...");
+    status_screen->line_printf(
+      ln++, "\f9\bMQTT\b connecting... (%ds)", mqtt_sec);
   } else {
     auto const typ = mqtt->client()->typical_response_time;
     status_screen->line_printf(ln++, "\f9\bMQTT\b OK ping=%.2fs", typ);
