@@ -84,6 +84,7 @@ class XBeeMQTTAdapterDef : public XBeeMQTTAdapter {
         TL_SPAM("<< %d bytes received from XBee", receive_size);
         read_data = receive->data;
         read_received = receive_size;
+        receive_millis = millis();
       }
     }
 
@@ -118,6 +119,10 @@ class XBeeMQTTAdapterDef : public XBeeMQTTAdapter {
   virtual int active_socket() const override { return socket; }
 
   virtual mqtt_client* client() override { return &mqtt; }
+
+  virtual unsigned long last_receive_millis() const override {
+    return receive_millis;
+  }
 
   void on_message(mqtt_response_publish const& publish) {
     TL_SPAM("Incoming: %.*s", publish.topic_name_size, publish.topic_name);
@@ -159,6 +164,7 @@ class XBeeMQTTAdapterDef : public XBeeMQTTAdapter {
   uint8_t* tx_buf = nullptr, *rx_buf = nullptr;
   int tx_buf_size = 0, rx_buf_size = 0;
   int socket = -1;
+  unsigned long receive_millis = 0;
 
   std::function<void(mqtt_response_publish const&)> message_callback = nullptr;
 };

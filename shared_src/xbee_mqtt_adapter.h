@@ -18,6 +18,7 @@ class XBeeMQTTAdapter {
   virtual void use_socket(int socket) = 0;
   virtual int active_socket() const = 0;
   virtual mqtt_client* client() = 0;
+  virtual unsigned long last_receive_millis() const = 0;
 };
 
 XBeeMQTTAdapter* make_xbee_mqtt_adapter(

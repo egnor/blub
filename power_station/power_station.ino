@@ -21,10 +21,8 @@ static XBeeStatusMonitor* xbee_monitor = nullptr;
 static XBeeSocketKeeper* socket_keeper = nullptr;
 static XBeeMQTTAdapter* mqtt = nullptr;
 
-static long last_socket_millis = 0;
 static long next_mqtt_millis = 0;
 static long next_screen_millis = 0;
-static long mqtt_ok_millis = 0;
 
 struct meter {
   int i2c_address;
@@ -73,30 +71,11 @@ static void poll_xbee() {
     socket_keeper->reconnect();
   }
 
-  if (socket_keeper->socket() < 0) {
-    mqtt_ok_millis = millis();  // Time MQTT only after socket connects
-
-    if ((millis() - last_socket_millis) > 10 * 60 * 1000) {
-      TL_PROBLEM("No socket for 10 minutes, rebooting");
-      status_screen->line_printf(0, "\f9\bNO SOCKET - REBOOTING");
-      delay(1000);
-      rp2040.reboot();
-    }
-  } else {
-    last_socket_millis = millis();
-
-    if (
-        mqtt->active_socket() >= 0 &&
-        mqtt->client()->error == MQTT_OK &&
-        mqtt->client()->typical_response_time >= 0
-    ) {
-      mqtt_ok_millis = millis();
-    } else if ((millis() - mqtt_ok_millis) > 10 * 60 * 1000) {
-      TL_PROBLEM("No MQTT for 10 minutes, rebooting");
-      status_screen->line_printf(0, "\f9\bNO MQTT - REBOOTING");
-      delay(1000);
-      rp2040.reboot();
-    }
+  if ((millis() - mqtt->last_receive_millis()) > 10 * 60 * 1000) {
+    TL_PROBLEM("No MQTT data for 10 minutes, rebooting");
+    status_screen->line_printf(0, "\f9\bNO MQTT - REBOOTING");
+    delay(1000);
+    rp2040.reboot();
   }
 }
 
@@ -172,20 +151,19 @@ static void update_screen() {
   status_screen->line_printf(ln++, "\f3 ");
 
   auto const now = millis();
-  int const sock_sec = (now - last_socket_millis) / 1000;
-  int const mqtt_sec = (now - mqtt_ok_millis) / 1000;
+  int const wait_sec = (now - mqtt->last_receive_millis()) / 1000;
   if (socket_keeper->socket() < 0) {
     status_screen->line_printf(
-      ln++, "\f9\bSocket\b not connected (%ds)", sock_sec);
+      ln++, "\f9\bSocket\b not connected (%ds)", wait_sec);
   } else if (mqtt->active_socket() < 0) {
-    status_screen->line_printf(ln++, "\f9\bMQTT\b not active (%ds)", mqtt_sec);
+    status_screen->line_printf(ln++, "\f9\bMQTT\b not active (%ds)", wait_sec);
   } else if (mqtt->client()->error != MQTT_OK) {
     char const* error = mqtt_error_str(mqtt->client()->error);
     if (strncmp(error, "MQTT_", 5)) error += 5;
-    status_screen->line_printf(ln++, "\f9\bMQTT\b %s (%ds)", error, mqtt_sec);
+    status_screen->line_printf(ln++, "\f9\bMQTT\b %s (%ds)", error, wait_sec);
   } else if (mqtt->client()->typical_response_time < 0) {
     status_screen->line_printf(
-      ln++, "\f9\bMQTT\b connecting... (%ds)", mqtt_sec);
+      ln++, "\f9\bMQTT\b connecting... (%ds)", wait_sec);
   } else {
     auto const typ = mqtt->client()->typical_response_time;
     status_screen->line_printf(ln++, "\f9\bMQTT\b OK ping=%.2fs", typ);
@@ -275,6 +253,6 @@ void setup() {
       "egnor-2020.ofb.net", 1883, XBeeAPI::SocketCreate::Protocol::TCP);
   mqtt = make_xbee_mqtt_adapter(512, 512, on_mqtt_incoming);
 
-  next_mqtt_millis = next_screen_millis = last_socket_millis = millis();
+  next_mqtt_millis = next_screen_millis = millis();
   rp2040.wdt_begin(5000);  // 5 second on-chip hardware watchdog (pet in loop())
 }
