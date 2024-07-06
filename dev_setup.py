@@ -6,6 +6,7 @@ import os
 import platform
 import shlex
 import shutil
+import sys
 import subprocess
 from pathlib import Path
 
@@ -25,6 +26,9 @@ os.chdir(top_dir)
 print(f"➡️ Mise (tool manager) setup")
 if not shutil.which("mise"):
     print("🚨 Please install 'mise' (https://mise.jdx.dev/)")
+    exit(1)
+if Path(sys.prefix).resolve() != top_dir / "dev.tmp" / "python_venv":
+    print(f"💥 Unexpected Python prefix: {sys.prefix}")
     exit(1)
 
 run_shell("mise", "install")
