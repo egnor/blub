@@ -7,9 +7,10 @@ version = "0.1"
 
 # Dependencies needed at runtime
 dependencies = [
-  "piexif",
-  "pint",
-  "pyserial",
+  "paho-mqtt~=2.1",
+  "piexif~=1.1",
+  "pint~=0.24",
+  "pyserial~=3.5",
 ]
 
 # How to build this project as a Python package

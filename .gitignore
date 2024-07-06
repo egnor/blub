@@ -7,6 +7,10 @@ _autosave-*
 .~lock.*
 .*.swp
 *.bak
+*.log
+*.old
+*_old
+*.tmp
 .vscode/
 .idea/
 
@@ -24,9 +28,6 @@ python_venv/
 *.drl
 *.kicad_prl
 *.lck
-*.tmp
-*.old
-*_old
 fab/
 plots/
 jlcpcb/

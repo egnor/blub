@@ -1,0 +1,3 @@
+--ignore-dir=dev.tmp
+--ignore-file=match:.*\.tmp
+--ignore-file=match:.*\.kicad_.*

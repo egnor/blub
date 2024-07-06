@@ -2,8 +2,8 @@
 arduino-cli = "https://github.com/egnor/asdf-arduino-cli.git"
 
 [tools]
-python = {version = "3.11", virtualenv = "build/python_venv"}
-arduino-cli = {version = "0.35.3"}
+python = {version = "3.11", virtualenv = "dev.tmp/python_venv"}
+arduino-cli = {version = "1.0"}
 
 [settings]
 experimental = true
@@ -12,5 +12,5 @@ python_venv_auto_create = true
 
 [env]
 ARDUINO_BOARD_MANAGER_ADDITIONAL_URLS = "https://github.com/earlephilhower/arduino-pico/releases/download/global/package_rp2040_index.json"
-ARDUINO_DIRECTORIES_DATA = "{{config_root}}/build/arduino"
+ARDUINO_DIRECTORIES_DATA = "{{config_root}}/dev.tmp/arduino"
 ARDUINO_LIBRARY_ENABLE_UNSAFE_INSTALL = "true"
