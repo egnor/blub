@@ -34,7 +34,7 @@ run_shell("git", "lfs", "install", "--local")
 run_shell("git", "lfs", "pull")
 
 print(f"\n➡️ Python setup")
-run_shell("pip", "install", "-e", ".")
+run_shell("python3", "-m", "pip", "install", "-e", ".")
 
 print(f"\n➡️ Arduino setup")
 run_shell("arduino-cli", "core", "update-index")
