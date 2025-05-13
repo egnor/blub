@@ -4,6 +4,7 @@
 [project]
 name = "blub"
 version = "0.1"
+requires-python = ">=3.12"
 
 # Dependencies needed at runtime
 dependencies = [
@@ -12,11 +13,3 @@ dependencies = [
   "pint~=0.24",
   "pyserial~=3.5",
 ]
-
-# How to build this project as a Python package
-[build-system]
-requires = ["setuptools"]
-build-backend = "setuptools.build_meta"
-
-[tool.setuptools]
-packages = []
