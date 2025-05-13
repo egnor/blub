@@ -2,17 +2,18 @@
 *~
 \#*\#
 _autosave-*
+*.bak
 /build/
 .DS_Store
+.idea/
 .~lock.*
-.*.swp
-*.bak
 *.log
+__MACOSX/
 *.old
 *_old
+.*.swp
 *.tmp
 .vscode/
-.idea/
 
 # Python
 *.egg-info
