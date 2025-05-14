@@ -11,7 +11,7 @@ import zipfile
 
 ZIPFILE_RE = re.compile(r"^.*/Linux[^/]*MediaSDK.*[.]zip$")
 TARFILE_RE = re.compile("^[^_.].*/MediaSDK[^/]*Linux[.]tar.*[.].*z")
-MODELFILE_RE = re.compile("^[^_.].*/[^/]*[.]ins")
+STRIP_RE = re.compile("^libMediaSDK-[^/]*/?")
 DEBFILE_RE = re.compile("^[^_.].*/[^/]*[.]deb")
 
 SCRIPT_DIR = pathlib.Path(__file__).parent
@@ -57,17 +57,10 @@ def extract_zip_tar():
         with zipf.open(zip_tars[0]) as tar_bin:
             with tarfile.open(name=zip_tars[0], fileobj=tar_bin) as tarf:
                 for entry in tarf:
-                    if MODELFILE_RE.match(entry.name):
-                        out = out_dir / "models" / entry.name.split("/")[-1]
-                        logging.info(f"  📷 {out.relative_to(out_dir)} ✨")
-                    elif DEBFILE_RE.match(entry.name):
-                        out = out_dir / entry.name.split("/")[-1]
-                        logging.info(f"  📦 {out.relative_to(out_dir)} ✨")
-                    else:
-                        continue
-
-                    out.parent.mkdir(parents=True, exist_ok=True)
-                    out.write_bytes(tarf.extractfile(entry).read())
+                    entry.name = STRIP_RE.sub("", entry.name)
+                    if entry.name:
+                        logging.info(f"    {entry.name}")
+                        tarf.extract(entry, path=out_dir, filter="data")
 
     if SDK_DIR.is_dir():
         logging.info(f"🗑️ Removing old {SDK_DIR.name}/")
@@ -107,7 +100,7 @@ def extract_deb():
             out = out_dir / "/".join(parts)
             data = tarf.extractfile(entry)
             if data:
-                logging.info(f"  📄 {out.relative_to(out_dir)} ✨")
+                logging.info(f"    {out.relative_to(out_dir)}")
                 out.parent.mkdir(parents=True, exist_ok=True)
                 out.write_bytes(tarf.extractfile(entry).read())
 
