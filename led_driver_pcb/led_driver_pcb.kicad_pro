@@ -467,7 +467,7 @@
     "pinned_symbol_libs": []
   },
   "meta": {
-    "filename": "led_driver.kicad_pro",
+    "filename": "led_driver_pcb.kicad_pro",
     "version": 3
   },
   "net_settings": {
@@ -669,12 +669,12 @@
       "ch0"
     ],
     [
-      "9c8fb89d-4b0b-4944-ba45-18ede6c852ec",
-      "ch2"
-    ],
-    [
       "9f5b3970-f1a8-4705-85bd-76b6ec31338d",
       "ch1"
+    ],
+    [
+      "9c8fb89d-4b0b-4944-ba45-18ede6c852ec",
+      "ch2"
     ],
     [
       "2e6e49c1-d787-4d83-be88-587cb0671ac7",

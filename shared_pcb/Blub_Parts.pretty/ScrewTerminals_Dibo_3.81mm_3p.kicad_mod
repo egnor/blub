@@ -1,7 +1,7 @@
 (footprint "ScrewTerminals_Dibo_3.81mm_3p"
-	(version 20240108)
+	(version 20241229)
 	(generator "pcbnew")
-	(generator_version "8.0")
+	(generator_version "9.0")
 	(layer "F.Cu")
 	(descr "Dorabo DB125-3.81-3P-*-S")
 	(property "Reference" "REF**"
@@ -31,18 +31,6 @@
 			)
 		)
 	)
-	(property "Footprint" ""
-		(at 0 0 0)
-		(unlocked yes)
-		(layer "F.Fab")
-		(hide yes)
-		(uuid "e54cf24b-8a84-41e5-af84-e6ea1a1ea79f")
-		(effects
-			(font
-				(size 1.27 1.27)
-			)
-		)
-	)
 	(property "Datasheet" ""
 		(at 0 0 0)
 		(unlocked yes)
@@ -52,6 +40,7 @@
 		(effects
 			(font
 				(size 1.27 1.27)
+				(thickness 0.15)
 			)
 		)
 	)
@@ -64,6 +53,7 @@
 		(effects
 			(font
 				(size 1.27 1.27)
+				(thickness 0.15)
 			)
 		)
 	)
@@ -489,13 +479,13 @@
 		(uuid "095557f7-9cfc-4348-8116-1f8ff601c41f")
 	)
 	(fp_rect
-		(start -6.155 -2.9)
-		(end -5.735 -3.4)
+		(start -6.135 -2.9)
+		(end -5.715 -3.4)
 		(stroke
 			(width 0.1)
-			(type default)
+			(type solid)
 		)
-		(fill none)
+		(fill no)
 		(layer "F.SilkS")
 		(uuid "17a17def-779a-420c-9b98-958f2b800d14")
 	)
@@ -506,7 +496,7 @@
 			(width 0.1)
 			(type default)
 		)
-		(fill none)
+		(fill no)
 		(layer "F.SilkS")
 		(uuid "b45f643f-7a61-4c8d-b698-83a41f8b46b8")
 	)
@@ -517,7 +507,7 @@
 			(width 0.13)
 			(type default)
 		)
-		(fill none)
+		(fill no)
 		(layer "F.SilkS")
 		(uuid "4b914a7c-da4e-45cc-b1a3-3aa7e6e71ee4")
 	)
@@ -528,7 +518,7 @@
 			(width 0.13)
 			(type default)
 		)
-		(fill none)
+		(fill no)
 		(layer "F.SilkS")
 		(uuid "3a2b2533-1d05-43d9-8ee3-b1ea49a45274")
 	)
@@ -539,18 +529,18 @@
 			(width 0.13)
 			(type default)
 		)
-		(fill none)
+		(fill no)
 		(layer "F.SilkS")
 		(uuid "77ae591a-d292-4884-83d2-fc61ec57c120")
 	)
 	(fp_rect
-		(start -6.455 -4.2)
-		(end 6.015 3.8)
+		(start -5.715 -4.2)
+		(end 5.715 3.8)
 		(stroke
 			(width 0.05)
-			(type default)
+			(type solid)
 		)
-		(fill none)
+		(fill no)
 		(layer "F.CrtYd")
 		(uuid "d6254fbb-4421-4c3c-a6cb-fc62021d53c6")
 	)
@@ -624,4 +614,5 @@
 			"cac1f9b1-8bb0-4638-a932-27aeed476b4b" "d70356e9-dd48-452b-a706-61e94e4b5a4c"
 		)
 	)
+	(embedded_fonts no)
 )

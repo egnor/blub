@@ -360,11 +360,11 @@
 		(uuid "17a17def-779a-420c-9b98-958f2b800d14")
 	)
 	(fp_rect
-		(start -4.23 3)
+		(start -4.25 3)
 		(end -3.81 2.5)
 		(stroke
 			(width 0.1)
-			(type default)
+			(type solid)
 		)
 		(fill no)
 		(layer "F.SilkS")
@@ -393,11 +393,11 @@
 		(uuid "77ae591a-d292-4884-83d2-fc61ec57c120")
 	)
 	(fp_rect
-		(start -4.55 -4.2)
-		(end 4.11 3.8)
+		(start -3.81 -4.2)
+		(end 3.81 3.8)
 		(stroke
 			(width 0.05)
-			(type default)
+			(type solid)
 		)
 		(fill no)
 		(layer "F.CrtYd")
