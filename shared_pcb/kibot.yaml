@@ -26,6 +26,8 @@ global:
       error: "W009"
     - filter: "KiBot has weird rules about component values"
       error: "W020"
+    - filter: "KiBot complains about schematic subsheets"
+      error: "W044"
     - filter: "Numerous warnings about missing simulation models"
       error: "W058"
       regex: "simulation_model_issue"
@@ -45,7 +47,12 @@ outputs:
     dir: "jlc_layers"
     layers:
       - "copper"
-      - "technical"
+      - "F.Paste"
+      - "F.Silks"
+      - "F.Mask"
+      - "B.Mask"
+      - "B.Silks"
+      - "B.Paste"
       - "Edge.Cuts"
     options:
       plot_footprint_values: true
@@ -96,7 +103,12 @@ outputs:
     comment: "DXF exports for mechanical CAD"
     dir: "drawings"
     layers:
-      - "technical"
+      - "F.Courtyard"
+      - "F.Silks"
+      - "F.Mask"
+      - "B.Mask"
+      - "B.Silks"
+      - "B.Courtyard"
       - "Edge.Cuts"
     options:
       polygon_mode: false
@@ -108,8 +120,3 @@ filters:
     comment: "Adjust rotation to match JLCPCB conventions"
     type: rot_footprint
     invert_bottom: true
-    rotations_and_offsets:
-      - {regex: "^SOIC-16(_.*)?", angle: 270}
-      - {regex: "^SOT-223-3(_.*)?", angle: 180}
-      - {regex: "^SOT-23(_.*)?$", angle: 270}
-      - {regex: "^UQFN-16(_.*)?", angle: 270}
