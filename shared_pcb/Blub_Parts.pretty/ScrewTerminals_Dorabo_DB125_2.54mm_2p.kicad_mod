@@ -1,7 +1,7 @@
-(footprint "ScrewTerminals_Dibo_2.54mm_2p"
-	(version 20240108)
+(footprint "ScrewTerminals_Dorabo_DB125_2.54mm_2p"
+	(version 20241229)
 	(generator "pcbnew")
-	(generator_version "8.0")
+	(generator_version "9.0")
 	(layer "F.Cu")
 	(descr "Dorabo DB125-2.54-2P-*-S")
 	(property "Reference" "REF**"
@@ -31,18 +31,6 @@
 			)
 		)
 	)
-	(property "Footprint" ""
-		(at 0 0 0)
-		(unlocked yes)
-		(layer "F.Fab")
-		(hide yes)
-		(uuid "8d3a5f90-02a1-4826-8a2b-e4883fb2614f")
-		(effects
-			(font
-				(size 1.27 1.27)
-			)
-		)
-	)
 	(property "Datasheet" ""
 		(at 0 0 0)
 		(unlocked yes)
@@ -52,6 +40,7 @@
 		(effects
 			(font
 				(size 1.27 1.27)
+				(thickness 0.15)
 			)
 		)
 	)
@@ -64,6 +53,19 @@
 		(effects
 			(font
 				(size 1.27 1.27)
+				(thickness 0.15)
+			)
+		)
+	)
+	(property "LCSC" "C918120"
+		(at 0 0 0)
+		(layer "F.SilkS")
+		(hide yes)
+		(uuid "0132c4a3-c790-407e-adf1-f80a61ddbde4")
+		(effects
+			(font
+				(size 1 1)
+				(thickness 0.1)
 			)
 		)
 	)
@@ -385,7 +387,7 @@
 			(width 0.1)
 			(type default)
 		)
-		(fill none)
+		(fill no)
 		(layer "F.SilkS")
 		(uuid "71e30df4-f1b1-4126-8733-41a71fb06ee2")
 	)
@@ -396,7 +398,7 @@
 			(width 0.1)
 			(type default)
 		)
-		(fill none)
+		(fill no)
 		(layer "F.SilkS")
 		(uuid "ab7a7940-14d4-4abd-a9e1-e8c230f8fbeb")
 	)
@@ -407,12 +409,12 @@
 			(width 0.05)
 			(type default)
 		)
-		(fill none)
+		(fill no)
 		(layer "F.CrtYd")
 		(uuid "226bf806-ec2e-4d9e-b3e8-e1914319af7a")
 	)
 	(fp_text user "WIRE"
-		(at 1.8218 -2.286 -90)
+		(at 1.8218 -2.286 270)
 		(unlocked yes)
 		(layer "F.SilkS")
 		(uuid "9ee00ce1-526e-4c51-93a0-6948005ffde7")
@@ -462,4 +464,5 @@
 			"da2ff315-0a62-404f-9d68-df48463bb807" "e2405025-a32e-40d0-b3c3-0e96c2286e4a"
 		)
 	)
+	(embedded_fonts no)
 )

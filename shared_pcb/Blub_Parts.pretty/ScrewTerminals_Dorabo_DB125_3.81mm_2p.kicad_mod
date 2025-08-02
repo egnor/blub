@@ -1,4 +1,4 @@
-(footprint "ScrewTerminals_Dibo_3.81mm_2p"
+(footprint "ScrewTerminals_Dorabo_DB125_3.81mm_2p"
 	(version 20241229)
 	(generator "pcbnew")
 	(generator_version "9.0")
@@ -54,6 +54,18 @@
 			(font
 				(size 1.27 1.27)
 				(thickness 0.15)
+			)
+		)
+	)
+	(property "LCSC" "C395878"
+		(at 0 0 0)
+		(layer "F.SilkS")
+		(hide yes)
+		(uuid "a23a2c84-02fc-4d19-909f-cc285c3b3f28")
+		(effects
+			(font
+				(size 1 1)
+				(thickness 0.1)
 			)
 		)
 	)
