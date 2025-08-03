@@ -467,7 +467,7 @@
     "pinned_symbol_libs": []
   },
   "meta": {
-    "filename": "magneto_pcb.kicad_pro",
+    "filename": "magneto_digital_pcb.kicad_pro",
     "version": 3
   },
   "net_settings": {
