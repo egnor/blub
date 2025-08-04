@@ -467,7 +467,7 @@
     "pinned_symbol_libs": []
   },
   "meta": {
-    "filename": "analog_pcb.kicad_pro",
+    "filename": "adc16x8_pcb.kicad_pro",
     "version": 3
   },
   "net_settings": {
