@@ -1986,7 +1986,7 @@
 		)
 		(embedded_fonts no)
 	)
-	(symbol "Magnetometer_Allegro_A132xLLH"
+	(symbol "Magnetometer_Allegro_A1304"
 		(exclude_from_sim no)
 		(in_bom yes)
 		(on_board yes)
@@ -1999,7 +1999,7 @@
 				(justify left)
 			)
 		)
-		(property "Value" "A132x"
+		(property "Value" "A1304"
 			(at 0 9.144 0)
 			(effects
 				(font
@@ -2018,7 +2018,7 @@
 				(hide yes)
 			)
 		)
-		(property "Datasheet" "https://www.allegromicro.com/~/media/files/datasheets/a1324-5-6-datasheet.ashx"
+		(property "Datasheet" "https://www.allegromicro.com/-/media/files/datasheets/a1304-datasheet.pdf"
 			(at -0.254 -22.606 0)
 			(effects
 				(font
@@ -2027,7 +2027,7 @@
 				(hide yes)
 			)
 		)
-		(property "Description" "Low-Noise Linear Hall-Effect Sensor ICs with Analog Output"
+		(property "Description" "Linear Hall-Effect Sensor IC with Analog Output"
 			(at -0.254 -24.638 0)
 			(effects
 				(font
@@ -2036,7 +2036,7 @@
 				(hide yes)
 			)
 		)
-		(property "LCSC" "C163282"
+		(property "LCSC" "C545185"
 			(at -0.254 -28.956 0)
 			(effects
 				(font
@@ -2054,7 +2054,7 @@
 				(hide yes)
 			)
 		)
-		(symbol "Magnetometer_Allegro_A132xLLH_0_1"
+		(symbol "Magnetometer_Allegro_A1304_0_1"
 			(rectangle
 				(start -6.35 7.62)
 				(end 5.08 -7.62)
@@ -2139,7 +2139,7 @@
 				)
 			)
 		)
-		(symbol "Magnetometer_Allegro_A132xLLH_1_1"
+		(symbol "Magnetometer_Allegro_A1304_1_1"
 			(circle
 				(center -2.667 0.381)
 				(radius 1.524)
