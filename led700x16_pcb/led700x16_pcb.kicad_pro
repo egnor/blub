@@ -467,7 +467,7 @@
     "pinned_symbol_libs": []
   },
   "meta": {
-    "filename": "led_driver_pcb.kicad_pro",
+    "filename": "led700x16_pcb.kicad_pro",
     "version": 3
   },
   "net_settings": {
