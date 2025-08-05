@@ -15,6 +15,30 @@ ARDUINO_BOARD_MANAGER_ADDITIONAL_URLS = "https://github.com/earlephilhower/ardui
 ARDUINO_DIRECTORIES_DATA = "{{config_root}}/dev.tmp/arduino"
 ARDUINO_LIBRARY_ENABLE_UNSAFE_INSTALL = "true"
 
+[vars]
+u_args = "--port /media/{{env.USER}}/RPI-RP2"
+m_args = "--port $(pyserial-ports -n1 RP2040)"
+
+[tasks]
+cu = { depends = ["c", "u"] }                                                   
+um = { depends = ["u"], run = "sleep 1", depends_post = ["m"] }                 
+cum = { depends = ["c", "um"] }                                                 
+
+[tasks.c]                                                                       
+run = "arduino-cli compile"                                                     
+dir = "{{cwd}}"                                                                 
+                                                                                
+[tasks.u]                                                                       
+run = "arduino-cli upload {{vars.u_args}}"                                     
+dir = "{{cwd}}"                                                                 
+wait_for = "c"                                                                  
+                                                                                
+[tasks.m]                                                                       
+run = "arduino-cli monitor {{vars.m_args}}"                    
+dir = "{{cwd}}"                                                                 
+wait_for = "u"                                                                  
+raw = true
+
 [hooks]
 postinstall = [
   "git lfs install --local",
