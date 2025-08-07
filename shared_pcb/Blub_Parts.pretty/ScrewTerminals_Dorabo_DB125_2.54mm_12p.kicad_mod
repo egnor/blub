@@ -1813,8 +1813,8 @@
 		(uuid "b20fd304-9ceb-437a-a48b-6e865f6488e7")
 	)
 	(fp_rect
-		(start -15.898 -3.6992)
-		(end 15.93 3.6008)
+		(start -15.748 -3.556)
+		(end 15.748 3.429)
 		(stroke
 			(width 0.05)
 			(type default)

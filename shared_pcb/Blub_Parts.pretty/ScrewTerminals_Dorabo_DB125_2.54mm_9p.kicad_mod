@@ -1390,8 +1390,8 @@
 		(uuid "8350128b-9182-4744-8e2e-f3b090706487")
 	)
 	(fp_rect
-		(start -12.12 -3.55)
-		(end 12.12 3.75)
+		(start -11.938 -3.429)
+		(end 11.938 3.556)
 		(stroke
 			(width 0.05)
 			(type default)
