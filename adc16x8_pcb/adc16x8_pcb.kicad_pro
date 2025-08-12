@@ -615,13 +615,13 @@
           "group_by": false,
           "label": "JLCRotOffset",
           "name": "JLCRotOffset",
-          "show": true
+          "show": false
         },
         {
           "group_by": false,
           "label": "LCSC",
           "name": "LCSC",
-          "show": false
+          "show": true
         },
         {
           "group_by": false,
@@ -633,7 +633,7 @@
           "group_by": false,
           "label": "JLCPosOffset",
           "name": "JLCPosOffset",
-          "show": true
+          "show": false
         },
         {
           "group_by": false,
