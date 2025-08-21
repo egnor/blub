@@ -4,9 +4,9 @@
 
 #include <Arduino.h>
 
-#include "tagged_logging.h"
+#include "ok_logging.h"
 
-static const TaggedLoggingContext TL_CONTEXT("xbee_status_monitor");
+static const OkLoggingContext OK_CONTEXT("xbee_status_monitor");
 
 using namespace XBeeAPI;
 
@@ -21,12 +21,12 @@ class XBeeStatusMonitorDef : public XBeeStatusMonitor {
 
       auto* cyc = &cyclics[r->frame_id - 128];
       if (memcmp(r->command, cyc->command, 2)) {
-        TL_PROBLEM("%.2s answered with %.2s", cyc->command, r->command);
+        OK_ERROR("%.2s answered with %.2s", cyc->command, r->command);
         return;
       }
 
       if (r->status != 0) {
-        TL_PROBLEM("%.2s answered with %s", r->command, r->status_text());
+        OK_ERROR("%.2s answered with %s", r->command, r->status_text());
         return;
       }
 
@@ -35,7 +35,7 @@ class XBeeStatusMonitorDef : public XBeeStatusMonitor {
     }
 
     if (auto* modem = frame.decode_as<ModemStatus>()) {
-      TL_NOTICE("Modem status %s", modem->status_text());
+      OK_NOTICE("Modem status %s", modem->status_text());
 
       // Immediately update the status, then re-poll for the "proper" status
       switch (modem->status) {
@@ -69,14 +69,14 @@ class XBeeStatusMonitorDef : public XBeeStatusMonitor {
       command->data[0] = conf_carrier;
       conf_carrier = UNKNOWN_PROFILE;
 
-      TL_ASSERT(!memcmp(cyclics[0].command, "CP", 2));
+      OK_FATAL_IF(memcmp(cyclics[0].command, "CP", 2));
       cyclics[0].next_millis = 0;  // Check immediately after setting
       cyclics[0].enabled = true;
       return true;
     }
 
     if (conf_apn[0]) {
-      TL_SPAM("Requesting APN \"%s\"", conf_apn);
+      OK_DETAIL("Requesting APN \"%s\"", conf_apn);
       auto const apn_size = strlen(conf_apn);
       auto* command = out->setup_as<ATCommand>(apn_size);
       command->frame_id = 0;  // No ack, we'll just poll immediately after
@@ -84,7 +84,7 @@ class XBeeStatusMonitorDef : public XBeeStatusMonitor {
       memcpy(command->data, conf_apn, apn_size);
       conf_apn[0] = 0;
 
-      TL_ASSERT(!memcmp(cyclics[1].command, "AN", 2));
+      OK_FATAL_IF(memcmp(cyclics[1].command, "AN", 2));
       cyclics[1].next_millis = 0;  // Check immediately after setting
       cyclics[1].enabled = true;
       return true;
@@ -165,32 +165,32 @@ class XBeeStatusMonitorDef : public XBeeStatusMonitor {
   void handle_hver(Cyclic* cyc, ATCommandResponse const& r, int extra) {
     if (extra == 2) {
       stat.hardware_ver = *reinterpret_cast<uint16_be const*>(r.data);
-      TL_SPAM("Hardware version %04x", stat.hardware_ver);
+      OK_DETAIL("Hardware version %04x", stat.hardware_ver);
       cyc->enabled = false;  // Won't change
     } else {
-      TL_PROBLEM("Bad reply length (MV: %d != 2 bytes)", extra);
+      OK_ERROR("Bad reply length (MV: %d != 2 bytes)", extra);
     }
   }
 
   void handle_fver(Cyclic* cyc, ATCommandResponse const& r, int extra) {
     if (extra == 4) {
       stat.firmware_ver = *reinterpret_cast<uint32_be const*>(r.data);
-      TL_SPAM("Firmware version %05x", stat.firmware_ver);
+      OK_DETAIL("Firmware version %05x", stat.firmware_ver);
       cyc->enabled = false;  // Won't change
     } else {
-      TL_PROBLEM("Bad reply length (VR: %d != 4 bytes)", extra);
+      OK_ERROR("Bad reply length (VR: %d != 4 bytes)", extra);
     }
   }
 
   void handle_iccid(Cyclic* cyc, ATCommandResponse const& r, int extra) {
     copy_text(r.data, extra, stat.iccid);
-    TL_SPAM("ICCID \"%s\"", stat.iccid);
+    OK_DETAIL("ICCID \"%s\"", stat.iccid);
     if (stat.iccid[0]) cyc->enabled = false;  // Disable (it won't change)
   }
 
   void handle_imei(Cyclic* cyc, ATCommandResponse const& r, int extra) {
     copy_text(r.data, extra, stat.imei);
-    TL_SPAM("IMEI \"%s\"", stat.imei);
+    OK_DETAIL("IMEI \"%s\"", stat.imei);
     if (stat.imei[0]) cyc->enabled = false;  // Disable (it won't change)
   }
 
@@ -202,25 +202,25 @@ class XBeeStatusMonitorDef : public XBeeStatusMonitor {
   void handle_config_cp(Cyclic* cyc, ATCommandResponse const& r, int extra) {
     if (extra == 1) {
       stat.carrier_profile = (CarrierProfile) r.data[0];
-      TL_SPAM("Carrier profile %s", stat.carrier_profile_text());
+      OK_DETAIL("Carrier profile %s", stat.carrier_profile_text());
       cyc->enabled = false;  // Won't change (unless we change it)
     } else if (extra != 0) {
-      TL_PROBLEM("Bad reply length (CP: %d != 1 byte)", extra);
+      OK_ERROR("Bad reply length (CP: %d != 1 byte)", extra);
     }
   }
 
   void handle_assoc(Cyclic*, ATCommandResponse const& r, int extra) {
     if (extra == 1) {
       stat.assoc_status = (AssociationStatus) r.data[0];
-      TL_NOTICE("Assoc status %s", stat.assoc_text());
+      OK_NOTICE("Assoc status %s", stat.assoc_text());
     } else {
-      TL_PROBLEM("Bad reply length (AI: %d != 1 byte)", extra);
+      OK_ERROR("Bad reply length (AI: %d != 1 byte)", extra);
     }
   }
 
   void handle_operator(Cyclic*, ATCommandResponse const& r, int extra) {
     copy_text(r.data, extra, stat.network_operator);
-    TL_SPAM("Network operator \"%s\"", stat.network_operator);
+    OK_DETAIL("Network operator \"%s\"", stat.network_operator);
   }
 
   void handle_time(Cyclic*, ATCommandResponse const& r, int extra) {
@@ -230,30 +230,30 @@ class XBeeStatusMonitorDef : public XBeeStatusMonitor {
       stat.network_time = value;
       stat.network_time_millis = millis();
       uint32_t const offset = value - stat.network_time_millis / 1000;
-      TL_SPAM("Network time %lu (offset %lu)", value, offset);
+      OK_DETAIL("Network time %lu (offset %lu)", value, offset);
     } else if (extra != 0) {
-      TL_PROBLEM("Bad reply length (DT: %d != 4 bytes)", extra);
+      OK_ERROR("Bad reply length (DT: %d != 4 bytes)", extra);
     }
   }
 
   void handle_config_apn(Cyclic* cyc, ATCommandResponse const& r, int extra) {
     copy_text(r.data, extra, stat.requested_apn);
-    TL_SPAM("Requested APN \"%s\"", stat.requested_apn);
+    OK_DETAIL("Requested APN \"%s\"", stat.requested_apn);
     cyc->enabled = false;  // Won't change (unless we change it)
   }
 
   void handle_operating_apn(Cyclic*, ATCommandResponse const& r, int extra) {
     copy_text(r.data, extra, stat.operating_apn);
-    TL_SPAM("Operating APN \"%s\"", stat.operating_apn);
+    OK_DETAIL("Operating APN \"%s\"", stat.operating_apn);
   }
 
   void handle_technology(Cyclic*, ATCommandResponse const& r, int extra) {
     if (extra == 2) {
       uint16_t const value = *reinterpret_cast<uint16_be const*>(r.data);
       stat.technology = (Technology) value;
-      TL_SPAM("Technology %s", stat.technology_text());
+      OK_DETAIL("Technology %s", stat.technology_text());
     } else if (extra != 0) {
-      TL_PROBLEM("Bad reply length (OT: %d != 1 byte)", extra);
+      OK_ERROR("Bad reply length (OT: %d != 1 byte)", extra);
     }
   }
 
@@ -261,9 +261,9 @@ class XBeeStatusMonitorDef : public XBeeStatusMonitor {
     if (extra == 2) {
       uint16_t const value = *reinterpret_cast<uint16_be const*>(r.data);
       stat.received_quality = value * -0.1f;
-      TL_SPAM("Signal quality %.1fdb", stat.received_quality);
+      OK_DETAIL("Signal quality %.1fdb", stat.received_quality);
     } else if (extra != 0) {
-      TL_PROBLEM("Bad reply length (SQ: %d != 1 byte)", extra);
+      OK_ERROR("Bad reply length (SQ: %d != 1 byte)", extra);
     }
   }
 
@@ -271,9 +271,9 @@ class XBeeStatusMonitorDef : public XBeeStatusMonitor {
     if (extra == 2) {
       uint16_t const value = *reinterpret_cast<uint16_be const*>(r.data);
       stat.received_power = value * -0.1f;
-      TL_SPAM("Signal power %.1fdbm", stat.received_power);
+      OK_DETAIL("Signal power %.1fdbm", stat.received_power);
     } else if (extra != 0) {
-      TL_PROBLEM("Bad reply length (SW: %d != 1 byte)", extra);
+      OK_ERROR("Bad reply length (SW: %d != 1 byte)", extra);
     }
   }
 
@@ -281,9 +281,9 @@ class XBeeStatusMonitorDef : public XBeeStatusMonitor {
     if (extra == 4) {
       uint8_t const* ip = r.data;
       memcpy(stat.ip_address, ip, 4);
-      TL_SPAM("IP %d.%d.%d.%d", ip[0], ip[1], ip[2], ip[3]);
+      OK_DETAIL("IP %d.%d.%d.%d", ip[0], ip[1], ip[2], ip[3]);
     } else if (extra != 0) {
-      TL_PROBLEM("Bad reply length (MY: %d != 4 bytes)", extra);
+      OK_ERROR("Bad reply length (MY: %d != 4 bytes)", extra);
     }
   }
 };

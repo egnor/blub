@@ -8,14 +8,14 @@
 
 #include "src/blub_station.h"
 #include "src/little_status.h"
-#include "src/tagged_logging.h"
+#include "src/ok_logging.h"
 #include "src/xbee_api.h"
 #include "src/xbee_mqtt_adapter.h"
 #include "src/xbee_radio.h"
 #include "src/xbee_socket_keeper.h"
 #include "src/xbee_status_monitor.h"
 
-static const TaggedLoggingContext TL_CONTEXT("power_station");
+static const OkLoggingContext OK_CONTEXT("power_station");
 
 static XBeeStatusMonitor* xbee_monitor = nullptr;
 static XBeeSocketKeeper* socket_keeper = nullptr;
@@ -37,7 +37,7 @@ std::array<meter, 3> meters{{
 }};
 
 static void on_mqtt_incoming(mqtt_response_publish const& message) {
-  TL_NOTICE("MQTT incoming: %.*s", message.topic_name_size, message.topic_name);
+  OK_NOTICE("MQTT incoming: %.*s", message.topic_name_size, message.topic_name);
 }
 
 static void poll_xbee() {
@@ -67,12 +67,12 @@ static void poll_xbee() {
   }
 
   if (mqtt->active_socket() >= 0 && mqtt->client()->error != MQTT_OK) {
-    TL_PROBLEM("MQTT error: %s", mqtt_error_str(mqtt->client()->error));
+    OK_ERROR("MQTT error: %s", mqtt_error_str(mqtt->client()->error));
     socket_keeper->reconnect();
   }
 
   if ((millis() - mqtt->last_receive_millis()) > 10 * 60 * 1000) {
-    TL_PROBLEM("No MQTT data for 10 minutes, rebooting");
+    OK_ERROR("No MQTT data for 10 minutes, rebooting");
     status_screen->line_printf(0, "\f9\bNO MQTT - REBOOTING");
     delay(1000);
     rp2040.reboot();
@@ -85,7 +85,7 @@ static void update_screen() {
   for (auto& meter : meters) {
     if (meter.driver) {
       sprintf(line + strlen(line), "\t\f9\b%s\b", meter.name);
-      TL_NOTICE(
+      OK_NOTICE(
           "%s: %.1fV %.1fmA [%.3fmVs] %.0fmW %.3fJ %.1fC", meter.name,
           meter.driver->readBusVoltage() * 1e-3f,
           meter.driver->readCurrent(),
@@ -94,7 +94,7 @@ static void update_screen() {
           meter.driver->readEnergy(),
           meter.driver->readDieTemp());
     } else {
-      TL_NOTICE("%s: not detected at startup", meter.name);
+      OK_NOTICE("%s: not detected at startup", meter.name);
     }
   }
   status_screen->line_printf(ln++, "%s", line + 1);
@@ -217,7 +217,7 @@ void loop() {
 
   // Reboot before millis rollover
   if (now > 0x7FFFFFFF - 1000) {
-    TL_NOTICE("Rebooting before millis rollover!");
+    OK_NOTICE("Rebooting before millis rollover!");
     status_screen->line_printf(0, "\f9\bROLLOVER - REBOOTING");
     delay(1000);
     rp2040.reboot();
@@ -232,17 +232,17 @@ void setup() {
   for (auto& meter : meters) {
     meter.driver.emplace();
     if (meter.driver->begin(meter.i2c_address)) {
-      TL_NOTICE("\"%s\" meter at 0x%x", meter.name, meter.i2c_address);
+      OK_NOTICE("\"%s\" meter at 0x%x", meter.name, meter.i2c_address);
       meter.driver->setShunt(0.015, 10.0);
       meter.driver->setCurrentConversionTime(INA228_TIME_4120_us);
     } else {
-      TL_PROBLEM("No \"%s\" meter at 0x%x", meter.name, meter.i2c_address);
+      OK_ERROR("No \"%s\" meter at 0x%x", meter.name, meter.i2c_address);
       meter.driver.reset();
     }
   }
 
   if (!xbee_radio->raw_serial()) {
-    TL_PROBLEM("No XBee found, rebooting");
+    OK_ERROR("No XBee found, rebooting");
     status_screen->line_printf(0, "\f9\bNO XBEE - REBOOTING");
     delay(1000);
     rp2040.reboot();

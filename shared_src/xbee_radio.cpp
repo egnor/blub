@@ -3,9 +3,9 @@
 #include <Arduino.h>
 #include <CircularBuffer.hpp>
 
-#include "tagged_logging.h"
+#include "ok_logging.h"
 
-static const TaggedLoggingContext TL_CONTEXT("xbee_radio");
+static const OkLoggingContext OK_CONTEXT("xbee_radio");
 
 class XBeeRadioDef : public XBeeRadio {
  public:
@@ -17,12 +17,12 @@ class XBeeRadioDef : public XBeeRadio {
 
   virtual void add_outgoing(XBeeAPI::Frame const& frame) override {
     if (state != API_MODE) {
-      TL_PROBLEM("Outgoing frame (0x%02x) queued before API ready, dropping");
+      OK_ERROR("Outgoing frame (0x%02x) queued before API ready, dropping");
       return;
     }
 
     if (frame.payload_size > XBeeAPI::MAX_PAYLOAD) {
-      TL_PROBLEM(
+      OK_ERROR(
           "Outgoing frame (0x%02x) too big (%d > %d), dropping",
           frame.type, frame.payload_size, XBeeAPI::MAX_PAYLOAD);
       return;
@@ -30,7 +30,7 @@ class XBeeRadioDef : public XBeeRadio {
 
     auto const space = outgoing_space();
     if (frame.payload_size + 5 > space) {
-      TL_PROBLEM(
+      OK_ERROR(
           "Outgoing frame too big for buffer (%d > %d), dropping",
           frame.payload_size + 5, space);
       return;
@@ -49,7 +49,7 @@ class XBeeRadioDef : public XBeeRadio {
     }
     out_buf.push(0xFF - checksum);
 
-    TL_SPAM(
+    OK_DETAIL(
         "Outgoing frame (0x%02x) %d bytes",
         frame.type, frame.payload_size);
   }
@@ -70,7 +70,7 @@ class XBeeRadioDef : public XBeeRadio {
 
         auto const size = (in_buf[1] << 8 | in_buf[2]) - 1;  // Without type
         if (size > XBeeAPI::MAX_PAYLOAD) {
-          TL_PROBLEM(
+          OK_ERROR(
               "Incoming frame too big (%d > %d), ignoring",
               size, XBeeAPI::MAX_PAYLOAD);
           in_buf.shift();
@@ -82,7 +82,7 @@ class XBeeRadioDef : public XBeeRadio {
         uint8_t check = 0;
         for (int i = 3; i < size + 5; ++i) check += in_buf[i];
         if (check != 0xFF) {
-          TL_PROBLEM("Bad incoming checksum (0x%02x != 0xFF), ignoring", check);
+          OK_ERROR("Bad incoming checksum (0x%02x != 0xFF), ignoring", check);
           in_buf.shift();
           continue;
         }
@@ -94,7 +94,7 @@ class XBeeRadioDef : public XBeeRadio {
         for (int i = 0; i < size; ++i) frame->payload[i] = in_buf.shift();
         in_buf.shift();                              // Checksum
 
-        TL_SPAM("Incoming frame (0x%02x) %d bytes", frame->type, size);
+        OK_DETAIL("Incoming frame (0x%02x) %d bytes", frame->type, size);
         return true;
       }
     }
@@ -102,7 +102,7 @@ class XBeeRadioDef : public XBeeRadio {
     auto const old_state = state;
     switch (state) {
       case START: {
-        TL_SPAM("Starting");
+        OK_DETAIL("Starting");
         serial->begin(9600);  // Assume re-begin() is OK
         state = INIT_9600_DELAY_PLUSPLUSPLUS;
         state_millis = now;
@@ -111,7 +111,7 @@ class XBeeRadioDef : public XBeeRadio {
 
       case INIT_9600_DELAY_PLUSPLUSPLUS: {
         if (now - state_millis > 1100) {
-          TL_SPAM("Sending +++ at 9600, waiting for OK");
+          OK_DETAIL("Sending +++ at 9600, waiting for OK");
           serial->print("+++");
           state = INIT_9600_EXPECT_OK;
           in_buf.clear();  // Ignore input before +++
@@ -121,11 +121,11 @@ class XBeeRadioDef : public XBeeRadio {
 
       case INIT_9600_EXPECT_OK: {
         if (eat_ok()) {
-          TL_SPAM("Got OK to +++ at 9600, switching to 115200");
+          OK_DETAIL("Got OK to +++ at 9600, switching to 115200");
           serial->print("ATBD7,AC\r");    // 115200 baud, apply changes
           state = INIT_SWITCH_TO_115200;  // Settle baud, then try AT
         } else if (now - state_millis > 1500) {
-          TL_SPAM("No OK at 9600, trying 115200");
+          OK_DETAIL("No OK at 9600, trying 115200");
           serial->begin(115200);  // Assume re-begin() is OK
           state = INIT_115200_DELAY_PLUSPLUSPLUS;
         }
@@ -134,7 +134,7 @@ class XBeeRadioDef : public XBeeRadio {
 
       case INIT_SWITCH_TO_115200: {
         if (now - state_millis > 100) {
-          TL_SPAM("Sending AT at 115200, waiting for OK");
+          OK_DETAIL("Sending AT at 115200, waiting for OK");
           serial->begin(115200);
           serial->print("AT\r");
           state = INIT_115200_EXPECT_OK;
@@ -145,7 +145,7 @@ class XBeeRadioDef : public XBeeRadio {
 
       case INIT_115200_DELAY_PLUSPLUSPLUS: {
         if (now - state_millis > 1100) {
-          TL_SPAM("Sending +++ at 115200, waiting for OK");
+          OK_DETAIL("Sending +++ at 115200, waiting for OK");
           serial->print("+++");
           state = INIT_115200_EXPECT_OK;
           in_buf.clear();  // Ignore input before +++
@@ -155,11 +155,11 @@ class XBeeRadioDef : public XBeeRadio {
 
       case INIT_115200_EXPECT_OK: {
         if (eat_ok()) {
-          TL_SPAM("Got OK at 115200, enabling API mode");
+          OK_DETAIL("Got OK at 115200, enabling API mode");
           serial->print("ATAP1,CN\r");  // enable API mode, exit command mode
           state = INIT_API_EXPECT_OKOK;
         } else if (now - state_millis > 1500) {
-          TL_PROBLEM("No OK at 115200, retrying init");
+          OK_ERROR("No OK at 115200, retrying init");
           serial->begin(9600);
           state = INIT_9600_DELAY_PLUSPLUSPLUS;
         }
@@ -168,10 +168,10 @@ class XBeeRadioDef : public XBeeRadio {
 
       case INIT_API_EXPECT_OKOK: {
         if (eat_ok(2)) {  // OK for ATAP1, OK for CN
-          TL_SPAM("Radio running in API mode");
+          OK_DETAIL("Radio running in API mode");
           state = API_MODE;
         } else if (now - state_millis > 1500) {
-          TL_PROBLEM("No OK for API mode, retrying");
+          OK_ERROR("No OK for API mode, retrying");
           state = INIT_115200_DELAY_PLUSPLUSPLUS;
         }
         break;
@@ -191,7 +191,7 @@ class XBeeRadioDef : public XBeeRadio {
       }
 
       default:
-        TL_FATAL("Bad state: %d", state);
+        OK_FATAL("Bad state: %d", state);
     }
 
     if (state != old_state) {
@@ -237,6 +237,6 @@ class XBeeRadioDef : public XBeeRadio {
 };
 
 XBeeRadio* make_xbee_radio(HardwareSerial* serial) {
-  TL_ASSERT(serial != nullptr);
+  OK_FATAL_IF(serial == nullptr);
   return new XBeeRadioDef(serial);
 }

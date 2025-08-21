@@ -1,15 +1,15 @@
 #include <Arduino.h>
 
 #include "src/blub_station.h"
-#include "src/tagged_logging.h"
 #include "src/little_status.h"
+#include "src/ok_logging.h"
 #include "src/xbee_api.h"
 #include "src/xbee_mqtt_adapter.h"
 #include "src/xbee_radio.h"
 #include "src/xbee_socket_keeper.h"
 #include "src/xbee_status_monitor.h"
 
-static const TaggedLoggingContext TL_CONTEXT("xbee_test");
+static const OkLoggingContext OK_CONTEXT("xbee_test");
 
 static XBeeStatusMonitor* monitor = nullptr;
 static XBeeSocketKeeper* keeper = nullptr;
@@ -18,7 +18,7 @@ static XBeeMQTTAdapter* mqtt = nullptr;
 static long last_loop_millis = 0;
 
 void on_message(mqtt_response_publish const& message) {
-  TL_NOTICE("MQTT message %.*s", message.topic_name_size, message.topic_name);
+  OK_NOTICE("MQTT message %.*s", message.topic_name_size, message.topic_name);
 }
 
 void loop() {
@@ -86,7 +86,7 @@ void loop() {
   if (last_loop_millis > 0) {
     auto const delay = loop_millis - last_loop_millis;
     if (delay > 2)
-      TL_NOTICE("loop time %ld ms", loop_millis - last_loop_millis);
+      OK_NOTICE("loop time %ld ms", loop_millis - last_loop_millis);
   }
 
   last_loop_millis = loop_millis;

@@ -5,9 +5,9 @@
 
 #include <Arduino.h>
 
-#include "tagged_logging.h"
+#include "ok_logging.h"
 
-static const TaggedLoggingContext TL_CONTEXT("xbee_socket_keeper");
+static const OkLoggingContext OK_CONTEXT("xbee_socket_keeper");
 
 using namespace XBeeAPI;
 
@@ -19,11 +19,11 @@ class XBeeSocketKeeperDef : public XBeeSocketKeeper {
     this->host_size = strlen(host);
     this->port = port;
     this->proto = proto;
-    TL_NOTICE("Starting: %s:%d (proto=%d)", host, port, proto);
+    OK_NOTICE("Starting: %s:%d (proto=%d)", host, port, proto);
   }
 
   ~XBeeSocketKeeperDef() {
-    TL_NOTICE("Destroying");
+    OK_NOTICE("Destroying");
     free(host);
   }
 
@@ -31,11 +31,11 @@ class XBeeSocketKeeperDef : public XBeeSocketKeeper {
     if (auto* reply = frame.decode_as<SocketCreateResponse>()) {
       if (next_step == CREATE_WAIT && reply->frame_id == 'K') {
         if (reply->status == SocketCreateResponse::OK) {
-          TL_SPAM("Socket #%d created", reply->socket);
+          OK_DETAIL("Socket #%d created", reply->socket);
           socket_id = reply->socket;
           next_step = CONNECT;
         } else {
-          TL_PROBLEM("Socket creation failed: %s", reply->status_text());
+          OK_ERROR("Socket creation failed: %s", reply->status_text());
           socket_id = -1;
           next_step = READY;
         }
@@ -46,10 +46,10 @@ class XBeeSocketKeeperDef : public XBeeSocketKeeper {
     if (auto* reply = frame.decode_as<SocketConnectResponse>()) {
       if (reply->socket == socket_id) {
         if (reply->status == SocketConnectResponse::STARTED) {
-          TL_SPAM("Socket #%d connecting", socket_id);
+          OK_DETAIL("Socket #%d connecting", socket_id);
           // This is temporary, wait for CONNECTED SocketStatus
         } else {
-          TL_PROBLEM("Connection aborted: %s", reply->status_text());
+          OK_ERROR("Connection aborted: %s", reply->status_text());
           next_step = CLOSE;
         }
       }
@@ -58,10 +58,10 @@ class XBeeSocketKeeperDef : public XBeeSocketKeeper {
     if (auto* status = frame.decode_as<SocketStatus>()) {
       if (status->socket == socket_id) {
         if (status->status == SocketStatus::CONNECTED) {
-          TL_NOTICE("Socket #%d connected OK", socket_id);
+          OK_NOTICE("Socket #%d connected OK", socket_id);
           next_step = READY;
         } else {
-          TL_PROBLEM("Connection failed: %s", status->status_text());
+          OK_ERROR("Connection failed: %s", status->status_text());
           socket_id = -1;  // Non-CONNECTED SocketStatus means it's closed
           next_step = READY;
         }
@@ -72,7 +72,7 @@ class XBeeSocketKeeperDef : public XBeeSocketKeeper {
     if (auto* reply = frame.decode_as<SocketCloseResponse>()) {
       if (reply->socket == socket_id &&
           reply->status == SocketCloseResponse::OK) {
-        TL_NOTICE("Socket #%d closed", socket_id);
+        OK_NOTICE("Socket #%d closed", socket_id);
         socket_id = -1;
         next_step = READY;
       }
@@ -81,7 +81,7 @@ class XBeeSocketKeeperDef : public XBeeSocketKeeper {
 
     if (auto* status = frame.decode_as<ModemStatus>()) {
       network_up = (status->status == ModemStatus::REGISTERED);
-      TL_SPAM(
+      OK_DETAIL(
           "Modem status %s (network %s)", status->status_text(),
           network_up ? "UP" : "DOWN");
       return;
@@ -93,7 +93,7 @@ class XBeeSocketKeeperDef : public XBeeSocketKeeper {
           reply->status == ATCommandResponse::OK &&
           extra_size == 1) {
         network_up = (reply->data[0] == 0x00);
-        TL_SPAM(
+        OK_DETAIL(
             "Assoc status 0x%02x (network %s)", reply->data[0],
             network_up ? "UP" : "DOWN");
       }
@@ -112,7 +112,7 @@ class XBeeSocketKeeperDef : public XBeeSocketKeeper {
             create->frame_id = 'K';
             create->protocol = proto;
             next_step = CREATE_WAIT;
-            TL_SPAM("Creating socket proto=%d", proto);
+            OK_DETAIL("Creating socket proto=%d", proto);
             return true;
           }
         }
@@ -129,7 +129,7 @@ class XBeeSocketKeeperDef : public XBeeSocketKeeper {
           connect->address_type = SocketConnect::TEXT;
           memcpy(connect->address, host, host_size);
           next_step = CONNECT_WAIT;
-          TL_NOTICE(
+          OK_NOTICE(
               "Connecting #%d to %.*s:%d",
               socket_id, host_size, connect->address, port);
           return true;
@@ -144,7 +144,7 @@ class XBeeSocketKeeperDef : public XBeeSocketKeeper {
           close->frame_id = 1;
           close->socket = socket_id;
           next_step = CLOSE_WAIT;
-          TL_NOTICE("Closing socket #%d", socket_id);
+          OK_NOTICE("Closing socket #%d", socket_id);
           return true;
         }
         break;

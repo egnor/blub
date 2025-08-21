@@ -5,9 +5,9 @@
 #include <Arduino.h>
 
 #include "MQTT-C/mqtt_pal.h"
-#include "tagged_logging.h"
+#include "ok_logging.h"
 
-static const TaggedLoggingContext TL_CONTEXT("xbee_mqtt_adapter");
+static const OkLoggingContext OK_CONTEXT("xbee_mqtt_adapter");
 
 using namespace XBeeAPI;
 
@@ -18,7 +18,7 @@ class XBeeMQTTAdapterDef : public XBeeMQTTAdapter {
   XBeeMQTTAdapterDef(
       int tx_size, int rx_size,
       std::function<void(mqtt_response_publish const&)> const& on_message) {
-    TL_NOTICE("Starting: tx=%d, rx=%d", tx_size, rx_size);
+    OK_NOTICE("Starting: tx=%d, rx=%d", tx_size, rx_size);
     tx_buf = new uint8_t[tx_buf_size = tx_size];
     rx_buf = new uint8_t[rx_buf_size = rx_size];
     message_callback = on_message;
@@ -27,7 +27,7 @@ class XBeeMQTTAdapterDef : public XBeeMQTTAdapter {
   }
 
   virtual ~XBeeMQTTAdapterDef() override {
-    TL_NOTICE("Destroying");
+    OK_NOTICE("Destroying");
     delete[] tx_buf;
     delete[] rx_buf;
   }
@@ -36,14 +36,14 @@ class XBeeMQTTAdapterDef : public XBeeMQTTAdapter {
       Frame const& incoming, int outgoing_space, Frame* outgoing) override {
     if (auto* stat = incoming.decode_as<SocketStatus>()) {
       if (stat->socket == socket && stat->status != SocketStatus::CONNECTED) {
-        TL_PROBLEM("Socket error: %s", stat->status_text());
+        OK_ERROR("Socket error: %s", stat->status_text());
         socket = -1;  // XBee closes socket automatically on error
       }
     }
 
     if (auto* stat = incoming.decode_as<SocketCloseResponse>()) {
       if (stat->socket == socket && stat->status == SocketCloseResponse::OK) {
-        TL_SPAM("Socket %d closed", socket);
+        OK_DETAIL("Socket %d closed", socket);
         socket = -1;
       }
     }
@@ -51,11 +51,11 @@ class XBeeMQTTAdapterDef : public XBeeMQTTAdapter {
     if (auto* stat = incoming.decode_as<TransmitStatus>()) {
       if (stat->frame_id == 'Q') {
         if (stat->status == 0) {
-          TL_SPAM(">>>> XBee confirmed transmission");
+          OK_DETAIL(">>>> XBee confirmed transmission");
         } else if (socket >= 0) {
-          TL_PROBLEM("Transmit error: %s", stat->status_text());
+          OK_ERROR("Transmit error: %s", stat->status_text());
           if (outgoing) {
-            TL_SPAM("Closing socket %d", socket);
+            OK_DETAIL("Closing socket %d", socket);
             auto* close = outgoing->setup_as<SocketClose>(0);
             close->frame_id = 'Q';  // Our signature
             close->socket = socket;
@@ -81,7 +81,7 @@ class XBeeMQTTAdapterDef : public XBeeMQTTAdapter {
     int receive_size;
     if (auto* receive = incoming.decode_as<SocketReceive>(&receive_size)) {
       if (receive->socket == socket) {
-        TL_SPAM("<< %d bytes received from XBee", receive_size);
+        OK_DETAIL("<< %d bytes received from XBee", receive_size);
         read_data = receive->data;
         read_received = receive_size;
         receive_millis = millis();
@@ -91,13 +91,13 @@ class XBeeMQTTAdapterDef : public XBeeMQTTAdapter {
     mqtt_sync(&mqtt);
 
     if (read_consumed != read_received) {
-      TL_PROBLEM(
+      OK_ERROR(
           "%d/%d bytes unconsumed in frame",
           read_received, read_received - read_consumed);
     }
 
     if (write_filled > 0) {
-      TL_SPAM(">> %d bytes sending to XBee", write_filled);
+      OK_DETAIL(">> %d bytes sending to XBee", write_filled);
       outgoing->payload_size += write_filled;
       return true;
     } else {
@@ -107,7 +107,7 @@ class XBeeMQTTAdapterDef : public XBeeMQTTAdapter {
 
   virtual void use_socket(int socket) override {
     if (socket != this->socket) {
-      TL_NOTICE("Init with socket #%d", socket);
+      OK_NOTICE("Init with socket #%d", socket);
       this->socket = socket;
       if (socket >= 0) {
         mqtt_reinit(&mqtt, this, tx_buf, tx_buf_size, rx_buf, rx_buf_size);
@@ -125,7 +125,7 @@ class XBeeMQTTAdapterDef : public XBeeMQTTAdapter {
   }
 
   void on_message(mqtt_response_publish const& publish) {
-    TL_SPAM("Incoming: %.*s", publish.topic_name_size, publish.topic_name);
+    OK_DETAIL("Incoming: %.*s", publish.topic_name_size, publish.topic_name);
     if (message_callback) message_callback(publish);
   }
 
@@ -135,7 +135,7 @@ class XBeeMQTTAdapterDef : public XBeeMQTTAdapter {
     if (send_size <= 0) return 0;
     memcpy(write_data + write_filled, buf, send_size);
     write_filled += send_size;
-    TL_SPAM(">>> %d/%d bytes MQTT client => XBee", send_size, len);
+    OK_DETAIL(">>> %d/%d bytes MQTT client => XBee", send_size, len);
     return send_size;
   }
 
@@ -145,7 +145,7 @@ class XBeeMQTTAdapterDef : public XBeeMQTTAdapter {
     if (recv_size <= 0) return 0;
     memcpy(buf, read_data + read_consumed, recv_size);
     read_consumed += recv_size;
-    TL_SPAM("<<< %d/%d bytes MQTT client <= XBee", recv_size, len);
+    OK_DETAIL("<<< %d/%d bytes MQTT client <= XBee", recv_size, len);
     return recv_size;
   }
 

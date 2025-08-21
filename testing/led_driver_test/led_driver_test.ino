@@ -3,9 +3,9 @@
 #include <Adafruit_PWMServoDriver.h>
 
 #include "src/blub_station.h"
-#include "src/tagged_logging.h"
+#include "src/ok_logging.h"
 
-static const TaggedLoggingContext TL_CONTEXT("led_driver_test");
+static const OkLoggingContext OK_CONTEXT("led_driver_test");
 static Adafruit_PWMServoDriver pwm;
 
 void loop() {
@@ -33,7 +33,7 @@ void loop() {
 void setup() {
   blub_station_init("led_driver_test");
   while (!pwm.begin()) {
-    TL_PROBLEM("PCA9685 initialization failed...");
+    OK_ERROR("PCA9685 initialization failed...");
     delay(500);
   }
 
