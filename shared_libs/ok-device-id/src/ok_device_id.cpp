@@ -166,8 +166,10 @@ static bool try_pericom_6408(
 
 OkDeviceId const& ok_device_id(I2C& i2c, bool rescan) {
   static OkDeviceId id;
-  if (!rescan && id.part != OKDEV_NO_PART) return id;
+  static bool scanned;
+  if (scanned && !rescan) return id;
 
+  scanned = true;
   if (try_awinic_9523(i2c, 0x5B, OKDEV_AWINIC_9523_x5B, &id)) return id;
   if (try_pericom_6408(i2c, 0x43, OKDEV_PERICOM_6408_x43, &id)) return id;
   id = {};
