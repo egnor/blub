@@ -16,10 +16,16 @@ enum OkDeviceIdPart : uint8_t {
 struct OkDeviceId {
   OkDeviceIdPart part;
   uint64_t pins;  // 4b/pin: 0=ground, 1=NC, 2-E=group, E=VCC, F=wild
+
+  operator bool() const { return part != OKDEV_NO_PART; }
+  bool matches(OkDeviceId const& other) const;
+  uint8_t pin(int pin) const { return (pins >> (pin * 4)) & 0x0F; }
+  void set_pin(int pin, uint8_t value);
 };
 
-OkDeviceId const& ok_device_id(decltype(Wire)& = Wire, bool rescan = false);
-bool ok_device_matches(OkDeviceId const&, OkDeviceId const&);
+OkDeviceId const& ok_device_id(
+    decltype(Wire)& = Wire, bool rescan = false
+);
 
 // List of known devices
 // OKDEV_(github user/org)_(name)[_V(version)]
