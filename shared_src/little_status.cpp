@@ -4,9 +4,8 @@
 #include <cstdarg>
 #include <cstring>
 
+#include <ok_logging.h>
 #include <U8g2lib.h>
-
-#include "ok_logging.h"
 
 static const OkLoggingContext OK_CONTEXT("little_status");
 

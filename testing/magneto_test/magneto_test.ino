@@ -1,9 +1,10 @@
 #include <Arduino.h>
 
 #include <Adafruit_ADS1X15.h>
+#include <ok_device_id.h>
+#include <ok_logging.h>
 
 #include "src/blub_station.h"
-#include "src/ok_logging.h"
 
 static const OkLoggingContext OK_CONTEXT("magneto_test");
 static Adafruit_ADS1115 adc_a;

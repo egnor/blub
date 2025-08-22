@@ -3,9 +3,9 @@
 #include <algorithm>
 
 #include <Arduino.h>
+#include <ok_logging.h>
 
 #include "MQTT-C/mqtt_pal.h"
-#include "ok_logging.h"
 
 static const OkLoggingContext OK_CONTEXT("xbee_mqtt_adapter");
 

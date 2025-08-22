@@ -3,8 +3,7 @@
 #include <array>
 
 #include <Arduino.h>
-
-#include "ok_logging.h"
+#include <ok_logging.h>
 
 static const OkLoggingContext OK_CONTEXT("xbee_status_monitor");
 

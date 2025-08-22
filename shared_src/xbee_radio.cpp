@@ -2,8 +2,7 @@
 
 #include <Arduino.h>
 #include <CircularBuffer.hpp>
-
-#include "ok_logging.h"
+#include <ok_logging.h>
 
 static const OkLoggingContext OK_CONTEXT("xbee_radio");
 

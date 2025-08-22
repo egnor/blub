@@ -7,6 +7,8 @@ profiles:
       - platform: rp2040:rp2040 (4.6.1)
         platform_index_url: https://github.com/earlephilhower/arduino-pico/releases/download/global/package_rp2040_index.json
     libraries:
+      - dir: ../../shared_libs/ok-arduino-logging
+      - dir: ../../shared_libs/ok-device-id
       - Adafruit BusIO (1.17.2)
       - Adafruit ADS1X15 (2.5.0)
       - CircularBuffer (1.4.0)
