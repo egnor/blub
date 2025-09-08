@@ -468,7 +468,7 @@
     "pinned_symbol_libs": []
   },
   "meta": {
-    "filename": "led700x16_pcb.kicad_pro",
+    "filename": "old_led700x16_pcb.kicad_pro",
     "version": 3
   },
   "net_settings": {
