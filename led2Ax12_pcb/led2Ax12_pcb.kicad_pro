@@ -468,7 +468,7 @@
     "pinned_symbol_libs": []
   },
   "meta": {
-    "filename": "old_led700x16_pcb.kicad_pro",
+    "filename": "led2Ax12_pcb.kicad_pro",
     "version": 3
   },
   "net_settings": {
@@ -706,64 +706,48 @@
       "ch0"
     ],
     [
-      "9f5b3970-f1a8-4705-85bd-76b6ec31338d",
+      "50c20cfa-5665-40cf-b791-4a4c5a29fc3e",
       "ch1"
     ],
     [
-      "9c8fb89d-4b0b-4944-ba45-18ede6c852ec",
-      "ch2"
-    ],
-    [
-      "2e6e49c1-d787-4d83-be88-587cb0671ac7",
-      "ch3"
-    ],
-    [
-      "f575fc5c-4277-423e-b95e-13908ed43825",
+      "0f63ef44-d761-482c-93fc-2b275ab530ef",
       "ch4"
     ],
     [
-      "3bb03650-125b-4dc1-bb80-b8674149b729",
+      "a62e1cef-1d11-4e94-b254-590147a6fdbc",
       "ch5"
     ],
     [
-      "75660104-c587-43e6-9bc9-f031de74d4aa",
+      "b96ef4b0-d793-4d25-b792-db7ee642bdf7",
+      "ch2"
+    ],
+    [
+      "b1f65ef7-1cac-4431-9156-11ac3992aa95",
+      "ch3"
+    ],
+    [
+      "4f5a9ca7-b337-4090-9b02-e993c3277432",
       "ch6"
     ],
     [
-      "36cbf581-2fae-4b27-899d-9251b175bbf2",
+      "3beaaca8-272d-4567-8206-533026af7b8b",
       "ch7"
     ],
     [
-      "6e9f1224-4205-4457-898d-be15fb58c666",
+      "36b6bffd-72a9-432a-865e-7db9bea2d114",
       "ch8"
     ],
     [
-      "032ed3e8-4930-4d41-ae83-83e1c2c5788c",
+      "eba10de5-9ee1-4ac6-9564-288c91852df4",
       "ch9"
     ],
     [
-      "b5456941-8253-44cf-b5bc-322232e36061",
+      "1360565b-7d89-4eb9-9b46-716c8d54f92c",
       "ch10"
     ],
     [
-      "cf0330e0-6874-4b41-b47d-fde2843945c2",
+      "02b8f992-55dd-444f-b84c-f57d54b2f5ef",
       "ch11"
-    ],
-    [
-      "8489c57b-ecf6-4b63-aaf9-c772ecaa0616",
-      "ch12"
-    ],
-    [
-      "e9a0e06f-b6ab-42e5-9ac4-a9b799b7ee9e",
-      "ch13"
-    ],
-    [
-      "b58ce362-ff27-401e-b81c-e795874164de",
-      "ch14"
-    ],
-    [
-      "718b9443-443e-4b45-bab7-a5ebd437890b",
-      "ch15"
     ]
   ],
   "text_variables": {}
