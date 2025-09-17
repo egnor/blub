@@ -478,7 +478,7 @@
     "pinned_symbol_libs": []
   },
   "meta": {
-    "filename": "config_pcb.kicad_pro",
+    "filename": "personality_pcb.kicad_pro",
     "version": 3
   },
   "net_settings": {
@@ -632,6 +632,12 @@
           "group_by": false,
           "label": "Sim.Pins",
           "name": "Sim.Pins",
+          "show": false
+        },
+        {
+          "group_by": false,
+          "label": "JLCRotOffset",
+          "name": "JLCRotOffset",
           "show": false
         }
       ],
