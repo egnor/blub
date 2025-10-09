@@ -73,6 +73,18 @@ outputs:
     type: "bom"
     extends: "_JLCPCB_bom"
     disable_run_by_default: "_JLCPCB_bom"
+    options:
+      group_fields:  # add LCSC to the default list
+        - part
+        - part lib
+        - value
+        - footprint
+        - footprint lib
+        - voltage
+        - tolerance
+        - current
+        - power
+        - lcsc
 
   - name: "jlcpcb_positions"
     comment: "JLCPCB pick and place positions"
