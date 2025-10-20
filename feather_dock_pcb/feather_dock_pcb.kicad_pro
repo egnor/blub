@@ -60,8 +60,8 @@
       ],
       "drc_exclusions": [
         [
-          "courtyards_overlap|138299000|116315000|034f385f-c297-4916-8208-ecb11c130434|b5b165e9-338f-4a5c-aae9-b4eda544ff61",
-          "seems to squish in okay"
+          "courtyards_overlap|138299000|116438600|034f385f-c297-4916-8208-ecb11c130434|b5b165e9-338f-4a5c-aae9-b4eda544ff61",
+          ""
         ]
       ],
       "meta": {
