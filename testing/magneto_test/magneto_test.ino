@@ -17,7 +17,7 @@ void loop() {
     a[i] = adc_a.readADC_SingleEnded(i);
     b[i] = adc_b.readADC_SingleEnded(i);
   }
-  OK_NOTICE(
+  OK_NOTE(
     "A: %+5d %+5d %+5d %+5d B: %+5d %+5d %+5d %+5d",
     a[0], a[1], a[2], a[3], b[0], b[1], b[2], b[3]
   );

@@ -18,7 +18,7 @@ class XBeeMQTTAdapterDef : public XBeeMQTTAdapter {
   XBeeMQTTAdapterDef(
       int tx_size, int rx_size,
       std::function<void(mqtt_response_publish const&)> const& on_message) {
-    OK_NOTICE("Starting: tx=%d, rx=%d", tx_size, rx_size);
+    OK_NOTE("Starting: tx=%d, rx=%d", tx_size, rx_size);
     tx_buf = new uint8_t[tx_buf_size = tx_size];
     rx_buf = new uint8_t[rx_buf_size = rx_size];
     message_callback = on_message;
@@ -27,7 +27,7 @@ class XBeeMQTTAdapterDef : public XBeeMQTTAdapter {
   }
 
   virtual ~XBeeMQTTAdapterDef() override {
-    OK_NOTICE("Destroying");
+    OK_NOTE("Destroying");
     delete[] tx_buf;
     delete[] rx_buf;
   }
@@ -107,7 +107,7 @@ class XBeeMQTTAdapterDef : public XBeeMQTTAdapter {
 
   virtual void use_socket(int socket) override {
     if (socket != this->socket) {
-      OK_NOTICE("Init with socket #%d", socket);
+      OK_NOTE("Init with socket #%d", socket);
       this->socket = socket;
       if (socket >= 0) {
         mqtt_reinit(&mqtt, this, tx_buf, tx_buf_size, rx_buf, rx_buf_size);

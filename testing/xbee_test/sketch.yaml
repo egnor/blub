@@ -8,4 +8,5 @@ profiles:
         platform_index_url: https://github.com/earlephilhower/arduino-pico/releases/download/global/package_rp2040_index.json
     libraries:
       - CircularBuffer (1.4.0)
+      - OK Arduino Logging (0.1)
       - U8g2 (2.34.22)

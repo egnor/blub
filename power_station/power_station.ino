@@ -37,7 +37,7 @@ std::array<meter, 3> meters{{
 }};
 
 static void on_mqtt_incoming(mqtt_response_publish const& message) {
-  OK_NOTICE("MQTT incoming: %.*s", message.topic_name_size, message.topic_name);
+  OK_NOTE("MQTT incoming: %.*s", message.topic_name_size, message.topic_name);
 }
 
 static void poll_xbee() {
@@ -85,7 +85,7 @@ static void update_screen() {
   for (auto& meter : meters) {
     if (meter.driver) {
       sprintf(line + strlen(line), "\t\f9\b%s\b", meter.name);
-      OK_NOTICE(
+      OK_NOTE(
           "%s: %.1fV %.1fmA [%.3fmVs] %.0fmW %.3fJ %.1fC", meter.name,
           meter.driver->readBusVoltage() * 1e-3f,
           meter.driver->readCurrent(),
@@ -94,7 +94,7 @@ static void update_screen() {
           meter.driver->readEnergy(),
           meter.driver->readDieTemp());
     } else {
-      OK_NOTICE("%s: not detected at startup", meter.name);
+      OK_NOTE("%s: not detected at startup", meter.name);
     }
   }
   status_screen->line_printf(ln++, "%s", line + 1);
@@ -217,7 +217,7 @@ void loop() {
 
   // Reboot before millis rollover
   if (now > 0x7FFFFFFF - 1000) {
-    OK_NOTICE("Rebooting before millis rollover!");
+    OK_NOTE("Rebooting before millis rollover!");
     status_screen->line_printf(0, "\f9\bROLLOVER - REBOOTING");
     delay(1000);
     rp2040.reboot();
@@ -232,7 +232,7 @@ void setup() {
   for (auto& meter : meters) {
     meter.driver.emplace();
     if (meter.driver->begin(meter.i2c_address)) {
-      OK_NOTICE("\"%s\" meter at 0x%x", meter.name, meter.i2c_address);
+      OK_NOTE("\"%s\" meter at 0x%x", meter.name, meter.i2c_address);
       meter.driver->setShunt(0.015, 10.0);
       meter.driver->setCurrentConversionTime(INA228_TIME_4120_us);
     } else {

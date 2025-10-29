@@ -18,11 +18,11 @@ class XBeeSocketKeeperDef : public XBeeSocketKeeper {
     this->host_size = strlen(host);
     this->port = port;
     this->proto = proto;
-    OK_NOTICE("Starting: %s:%d (proto=%d)", host, port, proto);
+    OK_NOTE("Starting: %s:%d (proto=%d)", host, port, proto);
   }
 
   ~XBeeSocketKeeperDef() {
-    OK_NOTICE("Destroying");
+    OK_NOTE("Destroying");
     free(host);
   }
 
@@ -57,7 +57,7 @@ class XBeeSocketKeeperDef : public XBeeSocketKeeper {
     if (auto* status = frame.decode_as<SocketStatus>()) {
       if (status->socket == socket_id) {
         if (status->status == SocketStatus::CONNECTED) {
-          OK_NOTICE("Socket #%d connected OK", socket_id);
+          OK_NOTE("Socket #%d connected OK", socket_id);
           next_step = READY;
         } else {
           OK_ERROR("Connection failed: %s", status->status_text());
@@ -71,7 +71,7 @@ class XBeeSocketKeeperDef : public XBeeSocketKeeper {
     if (auto* reply = frame.decode_as<SocketCloseResponse>()) {
       if (reply->socket == socket_id &&
           reply->status == SocketCloseResponse::OK) {
-        OK_NOTICE("Socket #%d closed", socket_id);
+        OK_NOTE("Socket #%d closed", socket_id);
         socket_id = -1;
         next_step = READY;
       }
@@ -128,7 +128,7 @@ class XBeeSocketKeeperDef : public XBeeSocketKeeper {
           connect->address_type = SocketConnect::TEXT;
           memcpy(connect->address, host, host_size);
           next_step = CONNECT_WAIT;
-          OK_NOTICE(
+          OK_NOTE(
               "Connecting #%d to %.*s:%d",
               socket_id, host_size, connect->address, port);
           return true;
@@ -143,7 +143,7 @@ class XBeeSocketKeeperDef : public XBeeSocketKeeper {
           close->frame_id = 1;
           close->socket = socket_id;
           next_step = CLOSE_WAIT;
-          OK_NOTICE("Closing socket #%d", socket_id);
+          OK_NOTE("Closing socket #%d", socket_id);
           return true;
         }
         break;

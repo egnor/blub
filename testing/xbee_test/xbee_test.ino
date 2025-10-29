@@ -18,7 +18,7 @@ static XBeeMQTTAdapter* mqtt = nullptr;
 static long last_loop_millis = 0;
 
 void on_message(mqtt_response_publish const& message) {
-  OK_NOTICE("MQTT message %.*s", message.topic_name_size, message.topic_name);
+  OK_NOTE("MQTT message %.*s", message.topic_name_size, message.topic_name);
 }
 
 void loop() {
@@ -86,7 +86,7 @@ void loop() {
   if (last_loop_millis > 0) {
     auto const delay = loop_millis - last_loop_millis;
     if (delay > 2)
-      OK_NOTICE("loop time %ld ms", loop_millis - last_loop_millis);
+      OK_NOTE("loop time %ld ms", loop_millis - last_loop_millis);
   }
 
   last_loop_millis = loop_millis;

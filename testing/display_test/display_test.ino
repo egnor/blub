@@ -11,7 +11,7 @@ using ScreenDriver = U8G2_SSD1306_64X32_1F_F_HW_I2C;
 ScreenDriver* screen;
 
 void loop() {
-  OK_NOTICE("LOOP");
+  OK_NOTE("LOOP");
 
   delay(300);
   screen->clearBuffer();
@@ -26,7 +26,7 @@ void loop() {
 
 void setup() {
   Serial.begin();
-  OK_NOTICE("SETUP");
+  OK_NOTE("SETUP");
   Wire.begin();
   screen = new ScreenDriver(U8G2_R2);
   OK_FATAL_IF(!screen->begin());
