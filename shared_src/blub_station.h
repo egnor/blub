@@ -2,10 +2,10 @@
 
 #pragma once
 
-class LittleStatus;
+class OkLittleLayout;
 class XBeeRadio;
 
-extern LittleStatus* status_screen;
+extern OkLittleLayout* status_layout;
 extern XBeeRadio* xbee_radio;
 
 void blub_station_init(char const* name);

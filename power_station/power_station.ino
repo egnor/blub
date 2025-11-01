@@ -5,10 +5,10 @@
 #include <Arduino.h>
 #include <ArduinoJson.h>
 #include <Adafruit_INA228.h>
+#include <ok_little_layout.h>
+#include <ok_logging.h>
 
 #include "src/blub_station.h"
-#include "src/little_status.h"
-#include "src/ok_logging.h"
 #include "src/xbee_api.h"
 #include "src/xbee_mqtt_adapter.h"
 #include "src/xbee_radio.h"
@@ -73,7 +73,7 @@ static void poll_xbee() {
 
   if ((millis() - mqtt->last_receive_millis()) > 10 * 60 * 1000) {
     OK_ERROR("No MQTT data for 10 minutes, rebooting");
-    status_screen->line_printf(0, "\f9\bNO MQTT - REBOOTING");
+    status_layout->line_printf(0, "\f9\bNO MQTT - REBOOTING");
     delay(1000);
     rp2040.reboot();
   }
@@ -97,7 +97,7 @@ static void update_screen() {
       OK_NOTE("%s: not detected at startup", meter.name);
     }
   }
-  status_screen->line_printf(ln++, "%s", line + 1);
+  status_layout->line_printf(ln++, "%s", line + 1);
 
   strcpy(line, "");
   for (auto& meter : meters) {
@@ -106,7 +106,7 @@ static void update_screen() {
     float power = meter.driver->readPower() * 1e-3f * sign;
     sprintf(line + strlen(line), "\t\f12%.2fW", power);
   }
-  status_screen->line_printf(ln++, "%s", line + 1);
+  status_layout->line_printf(ln++, "%s", line + 1);
 
   strcpy(line, "");
   for (auto& meter : meters) {
@@ -120,14 +120,14 @@ static void update_screen() {
               meter.driver->readBusVoltage() * 1e-3, milliamps * 1e-3);
     }
   }
-  status_screen->line_printf(ln++, "%s", line + 1);
-  status_screen->line_printf(ln++, "\f3 ");
+  status_layout->line_printf(ln++, "%s", line + 1);
+  status_layout->line_printf(ln++, "\f3 ");
 
   auto const& xst = xbee_monitor->status();
   if (!xst.hardware_ver) {
-    status_screen->line_printf(ln++, "\f9No XBee status");
+    status_layout->line_printf(ln++, "\f9No XBee status");
   } else {
-    status_screen->line_printf(
+    status_layout->line_printf(
         ln++, "\f9\bCell\b %s %s %s",
         xst.network_operator,
         xst.technology == XBeeStatusMonitor::UNKNOWN_TECH
@@ -146,27 +146,27 @@ static void update_screen() {
     } else {
       sprintf(line + strlen(line), "%s ", xst.assoc_text());
     }
-    status_screen->line_printf(ln++, "%s", line);
+    status_layout->line_printf(ln++, "%s", line);
   }
-  status_screen->line_printf(ln++, "\f3 ");
+  status_layout->line_printf(ln++, "\f3 ");
 
   auto const now = millis();
   int const wait_sec = (now - mqtt->last_receive_millis()) / 1000;
   if (socket_keeper->socket() < 0) {
-    status_screen->line_printf(
+    status_layout->line_printf(
       ln++, "\f9\bSocket\b not connected (%ds)", wait_sec);
   } else if (mqtt->active_socket() < 0) {
-    status_screen->line_printf(ln++, "\f9\bMQTT\b not active (%ds)", wait_sec);
+    status_layout->line_printf(ln++, "\f9\bMQTT\b not active (%ds)", wait_sec);
   } else if (mqtt->client()->error != MQTT_OK) {
     char const* error = mqtt_error_str(mqtt->client()->error);
     if (strncmp(error, "MQTT_", 5)) error += 5;
-    status_screen->line_printf(ln++, "\f9\bMQTT\b %s (%ds)", error, wait_sec);
+    status_layout->line_printf(ln++, "\f9\bMQTT\b %s (%ds)", error, wait_sec);
   } else if (mqtt->client()->typical_response_time < 0) {
-    status_screen->line_printf(
+    status_layout->line_printf(
       ln++, "\f9\bMQTT\b connecting... (%ds)", wait_sec);
   } else {
     auto const typ = mqtt->client()->typical_response_time;
-    status_screen->line_printf(ln++, "\f9\bMQTT\b OK ping=%.2fs", typ);
+    status_layout->line_printf(ln++, "\f9\bMQTT\b OK ping=%.2fs", typ);
   }
 }
 
@@ -218,7 +218,7 @@ void loop() {
   // Reboot before millis rollover
   if (now > 0x7FFFFFFF - 1000) {
     OK_NOTE("Rebooting before millis rollover!");
-    status_screen->line_printf(0, "\f9\bROLLOVER - REBOOTING");
+    status_layout->line_printf(0, "\f9\bROLLOVER - REBOOTING");
     delay(1000);
     rp2040.reboot();
   }
@@ -243,7 +243,7 @@ void setup() {
 
   if (!xbee_radio->raw_serial()) {
     OK_ERROR("No XBee found, rebooting");
-    status_screen->line_printf(0, "\f9\bNO XBEE - REBOOTING");
+    status_layout->line_printf(0, "\f9\bNO XBEE - REBOOTING");
     delay(1000);
     rp2040.reboot();
   }

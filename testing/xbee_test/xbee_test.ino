@@ -1,7 +1,7 @@
 #include <Arduino.h>
+#include <ok_little_layout.h>
 
 #include "src/blub_station.h"
-#include "src/little_status.h"
 #include "src/ok_logging.h"
 #include "src/xbee_api.h"
 #include "src/xbee_mqtt_adapter.h"
@@ -59,25 +59,25 @@ void loop() {
 
   auto const& st = monitor->status();
   if (!xbee_radio->raw_serial()) {
-    status_screen->line_printf(1, "\f9No XBee found");
+    status_layout->line_printf(1, "\f9No XBee found");
   } else if (!st.hardware_ver) {
-    status_screen->line_printf(1, "\f9XBee API starting");
+    status_layout->line_printf(1, "\f9XBee API starting");
   } else {
-    status_screen->line_printf(
+    status_layout->line_printf(
         1, "\f9XBee %04x / %05x", st.hardware_ver, st.firmware_ver);
-    status_screen->line_printf(
+    status_layout->line_printf(
         2, "\f9%s / %s / %s",
         st.network_operator, st.operating_apn,
         st.technology == XBeeStatusMonitor::UNKNOWN_TECH
             ? "" : st.technology_text());
     if (st.assoc_status == XBeeStatusMonitor::CONNECTED) {
       auto const& ip = st.ip_address;
-      status_screen->line_printf(
+      status_layout->line_printf(
           3, "\f9P%.1f Q%.1f %d.%d.%d.%d",
           st.received_power, st.received_quality,
           ip[0], ip[1], ip[2], ip[3]);
     } else {
-      status_screen->line_printf(
+      status_layout->line_printf(
           3, "\f9P%.1f Q%.1f %s",
           st.received_power, st.received_quality, st.assoc_text());
     }

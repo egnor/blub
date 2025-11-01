@@ -1,12 +1,12 @@
 #include "blub_station.h"
 
 #include <Arduino.h>
+#include <ok_little_layout.h>
+#include <ok_logging.h>
 #include <tusb.h>
 #include <U8g2lib.h>
 #include <Wire.h>
 
-#include "little_status.h"
-#include "ok_logging.h"
 #include "xbee_radio.h"
 
 static const OkLoggingContext OK_CONTEXT("blub_station");
@@ -19,13 +19,13 @@ static constexpr int TO_XBEE_PIN = 12;
 static constexpr int FROM_XBEE_PIN = 13;
 
 static u8g2_t screen_driver;
-LittleStatus* status_screen = nullptr;
+OkLittleLayout* status_layout = nullptr;
 XBeeRadio* xbee_radio = nullptr;
 
-class DummyStatus : public LittleStatus {
+class DummyStatus : public OkLittleLayout {
   public:
     virtual void line_printf(int line, char const* format, ...) override {}
-    virtual u8g2_t* raw_driver() const override { return nullptr; }
+    virtual u8g2_t* get_u8g2() const override { return nullptr; }
 };
 
 class DummyXBee : public XBeeRadio {
@@ -76,10 +76,10 @@ void blub_station_init(char const* name) {
   auto const i2c_status = Wire.endTransmission();
   if (i2c_status == 2) {
     OK_NOTE("No screen found (I2C addr 0x%x)", SCREEN_I2C_ADDR);
-    status_screen = new DummyStatus();
+    status_layout = new DummyStatus();
   } else if (i2c_status != 0) {
     OK_ERROR("Error %d probing screen (0x%x)", i2c_status, SCREEN_I2C_ADDR);
-    status_screen = new DummyStatus();
+    status_layout = new DummyStatus();
   } else {
     OK_NOTE("🖥️ Screen found (I2C addr 0x%x)", SCREEN_I2C_ADDR);
     u8g2_Setup_ssd1306_i2c_128x64_noname_f(
@@ -92,9 +92,9 @@ void blub_station_init(char const* name) {
     u8g2_SetI2CAddress(&screen_driver, SCREEN_I2C_ADDR << 1);
     u8g2_InitDisplay(&screen_driver);
     u8g2_SetPowerSave(&screen_driver, 0);
-    status_screen = make_little_status(&screen_driver);
-    status_screen->line_printf(0, "\f9\b%s", name);
-    status_screen->line_printf(1, "\f9Running...");
+    status_layout = new_ok_little_layout(&screen_driver);
+    status_layout->line_printf(0, "\f9\b%s", name);
+    status_layout->line_printf(1, "\f9Running...");
   }
 
   // If the XBee is present, it will force the radio-to-CPU line high
