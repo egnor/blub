@@ -29,6 +29,7 @@ python_venv/
 *.drl
 *.kicad_prl
 *.lck
+.history
 fab/
 plots/
 jlcpcb/
