@@ -25,7 +25,7 @@ void loop() {
 }
 
 void setup() {
-  Serial.begin();
+  Serial.begin(115200);
   OK_NOTE("SETUP");
   Wire.begin();
   screen = new ScreenDriver(U8G2_R2);

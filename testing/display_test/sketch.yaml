@@ -4,9 +4,11 @@ profiles:
   default:
     fqbn: rp2040:rp2040:adafruit_feather_rfm:dbgport=Serial,dbglvl=All
     platforms:
-      - platform: rp2040:rp2040 (3.8.0)
+      - platform: rp2040:rp2040 (5.4.2)
         platform_index_url: https://github.com/earlephilhower/arduino-pico/releases/download/global/package_rp2040_index.json
     libraries:
       - CircularBuffer (1.4.0)
+      - Everyday Pixel Fonts (0.1)
       - OK Arduino Logging (0.1)
+      - OK Little Layout (0.1)
       - U8g2 (2.35.30)

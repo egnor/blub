@@ -10,8 +10,6 @@ python_compile = false
 [env]
 _.python.venv = { path = "dev.tmp/python_venv", create = true }
 UV_PROJECT_ENVIRONMENT = "{{config_root}}/dev.tmp/python_venv"
-
-ARDUINO_BOARD_MANAGER_ADDITIONAL_URLS = "https://github.com/earlephilhower/arduino-pico/releases/download/global/package_rp2040_index.json"
 ARDUINO_DIRECTORIES_DATA = "{{config_root}}/dev.tmp/arduino"
 ARDUINO_LIBRARY_ENABLE_UNSAFE_INSTALL = "true"
 
@@ -43,7 +41,5 @@ raw = true
 postinstall = [
   "git lfs install --local",
   "git lfs pull",
-  "arduino-cli core update-index",
-  "arduino-cli core install rp2040:rp2040",
   "uv sync",
 ]
