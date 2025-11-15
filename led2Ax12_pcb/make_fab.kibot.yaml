@@ -2,4 +2,4 @@ kibot:
   version: 1
 
 import:
-  - file: "../shared_pcb/kibot.yaml"
+  - file: "../../ok_pcb_parts/kibot_jlcpcb.yaml"

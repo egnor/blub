@@ -1,4 +1,4 @@
 (fp_lib_table
   (version 7)
-  (lib (name "Blub")(type "KiCad")(uri "${KIPRJMOD}/../shared_pcb/Blub_Parts.pretty")(options "")(descr ""))
+  (lib (name "OK")(type "KiCad")(uri "${KIPRJMOD}/../../ok_pcb_parts/OK_Parts.pretty")(options "")(descr ""))
 )
