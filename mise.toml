@@ -18,23 +18,23 @@ u_args = "--port /media/{{env.USER}}/RPI-RP2"
 m_args = "--port $(pyserial-ports -n1 RP2040)"
 
 [tasks]
-cu = { depends = ["c", "u"] }                                                   
-um = { depends = ["u"], run = "sleep 1", depends_post = ["m"] }                 
-cum = { depends = ["c", "um"] }                                                 
+cu = { depends = ["c", "u"] }
+um = { depends = ["u"], run = "sleep 1", depends_post = ["m"] }
+cum = { depends = ["c", "um"] }
 
-[tasks.c]                                                                       
-run = "arduino-cli compile"                                                     
-dir = "{{cwd}}"                                                                 
-                                                                                
-[tasks.u]                                                                       
-run = "arduino-cli upload {{vars.u_args}}"                                     
-dir = "{{cwd}}"                                                                 
-wait_for = "c"                                                                  
-                                                                                
-[tasks.m]                                                                       
-run = "arduino-cli monitor {{vars.m_args}}"                    
-dir = "{{cwd}}"                                                                 
-wait_for = "u"                                                                  
+[tasks.c]
+run = "arduino-cli compile"
+dir = "{{cwd}}"
+
+[tasks.u]
+run = "arduino-cli upload {{vars.u_args}}"
+dir = "{{cwd}}"
+wait_for = "c"
+
+[tasks.m]
+run = "arduino-cli monitor {{vars.m_args}}"
+dir = "{{cwd}}"
+wait_for = "u"
 raw = true
 
 [hooks]
