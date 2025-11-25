@@ -37,18 +37,7 @@ class DummyXBee : public XBeeRadio {
 };
 
 void blub_station_init(char const* name) {
-  Serial.begin(115200);  // Debug console
-
-  // If there's a USB host, wait a bit for serial connection before starting
-  auto const start = millis();
-  bool usb_host_seen = false;
-  do {
-    usb_host_seen = usb_host_seen || tud_connected();
-  } while (
-    (usb_host_seen && !Serial.dtr() && (millis() - start < 5000)) ||
-    (!usb_host_seen && (millis() - start < 500))
-  );
-
+  ok_serial_begin();  // Serial debug console
   OK_NOTE("💡 %s", name);
 
   OK_DETAIL("Reset and wake screen and/or XBee (if present)");

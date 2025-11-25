@@ -1,37 +1,26 @@
 #include <Arduino.h>
 
 #include <ok_logging.h>
-#include <U8g2lib.h>
-#include <Wire.h>
+#include <ok_little_layout.h>
+#include <ok_micro_dock.h>
 
 static const OkLoggingContext OK_CONTEXT("display_test");
 extern char const* const ok_logging_config = "*=DETAIL";
 
-using ScreenDriver = U8G2_SSD1306_64X32_1F_F_HW_I2C;
-ScreenDriver* screen;
-
 void loop() {
   OK_NOTE("LOOP");
-
-  delay(300);
-  screen->clearBuffer();
-  screen->drawStr(10, 10, "Hello World!");
-  screen->sendBuffer();
-
-  delay(300);
-  screen->clearBuffer();
-  screen->drawStr(10, 10, "World Hello!");
-  screen->sendBuffer();
+  ok_dock_layout->line_printf(0, "\f9Hello World!");
+  ok_dock_layout->line_printf(
+    1, "\f9[%d] [%d] [%d]",
+    ok_dock_button(0),
+    ok_dock_button(1),
+    ok_dock_button(2)
+  );
+  delay(20);
 }
 
 void setup() {
-  Serial.begin(115200);
+  ok_serial_begin();
   OK_NOTE("SETUP");
-  Wire.begin();
-  screen = new ScreenDriver(U8G2_R2);
-  OK_FATAL_IF(!screen->begin());
-  screen->clearDisplay();
-  screen->setPowerSave(0);
-  screen->setFont(u8g2_font_ncenB08_tr);
-  screen->setDrawColor(1);
+  OK_FATAL_IF(!ok_dock_init_feather_v8());
 }
