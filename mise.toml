@@ -15,7 +15,7 @@ ARDUINO_LIBRARY_ENABLE_UNSAFE_INSTALL = "true"
 
 [vars]
 u_args = "--port /media/{{env.USER}}/RPI-RP2"
-m_args = "--port $(pyserial-ports -n1 RP2040)"
+m_args = "--port $(okserial -l1 RP2040)"
 
 [tasks]
 cu = { depends = ["c", "u"] }
@@ -38,8 +38,4 @@ wait_for = "u"
 raw = true
 
 [hooks]
-postinstall = [
-  "git lfs install --local",
-  "git lfs pull",
-  "uv sync",
-]
+postinstall = ["git lfs install --local", "git lfs pull", "uv sync"]

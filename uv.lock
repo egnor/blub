@@ -1,5 +1,15 @@
 version = 1
+revision = 1
 requires-python = ">=3.12"
+
+[[package]]
+name = "beartype"
+version = "0.22.9"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/c7/94/1009e248bbfbab11397abca7193bea6626806be9a327d399810d523a07cb/beartype-0.22.9.tar.gz", hash = "sha256:8f82b54aa723a2848a56008d18875f91c1db02c32ef6a62319a002e3e25a975f", size = 1608866 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/71/cc/18245721fa7747065ab478316c7fea7c74777d07f37ae60db2e84f8172e8/beartype-0.22.9-py3-none-any.whl", hash = "sha256:d16c9bbc61ea14637596c5f6fbff2ee99cbe3573e46a716401734ef50c3060c2", size = 1333658 },
+]
 
 [[package]]
 name = "blub"
@@ -8,6 +18,7 @@ source = { virtual = "." }
 dependencies = [
     { name = "exif" },
     { name = "ok-logging-setup" },
+    { name = "ok-serial" },
     { name = "paho-mqtt" },
     { name = "pint" },
     { name = "pyserial" },
@@ -18,6 +29,7 @@ dependencies = [
 requires-dist = [
     { name = "exif", specifier = ">=1.6.1" },
     { name = "ok-logging-setup", specifier = ">=0.2" },
+    { name = "ok-serial", specifier = ">=0.2" },
     { name = "paho-mqtt", specifier = "~=2.1" },
     { name = "pint", specifier = "~=0.24" },
     { name = "pyserial", specifier = "~=3.5" },
@@ -96,12 +108,37 @@ wheels = [
 ]
 
 [[package]]
+name = "natsort"
+version = "8.4.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/e2/a9/a0c57aee75f77794adaf35322f8b6404cbd0f89ad45c87197a937764b7d0/natsort-8.4.0.tar.gz", hash = "sha256:45312c4a0e5507593da193dedd04abb1469253b601ecaf63445ad80f0a1ea581", size = 76575 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/ef/82/7a9d0550484a62c6da82858ee9419f3dd1ccc9aa1c26a1e43da3ecd20b0d/natsort-8.4.0-py3-none-any.whl", hash = "sha256:4732914fb471f56b5cce04d7bae6f164a592c7712e1c85f9ef585e197299521c", size = 38268 },
+]
+
+[[package]]
 name = "ok-logging-setup"
+version = "0.12"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/81/a2/780771d7d24a99b7ea384d87f6076579fe34271f7f021019b1cfe33df986/ok_logging_setup-0.12.tar.gz", hash = "sha256:3cd98e7476bafcd659f0bc8f59916326c25f731b8b88d9e352190d83e66d2402", size = 7287 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/1a/40/920572dc260b1169862aab6adbf09b6e783e03c5f5ab72cae1f7fc48f292/ok_logging_setup-0.12-py3-none-any.whl", hash = "sha256:0753f3ab3aa7ca3deedaffd3aa01620503cbe330225656073b2dee8b9ac0b195", size = 9429 },
+]
+
+[[package]]
+name = "ok-serial"
 version = "0.2"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/6e/da/153c82ccf3d6eeb00d0f09dd7b3f1211fc51376735acecdcaa1093dfba97/ok_logging_setup-0.2.tar.gz", hash = "sha256:c8e73b89a2435bbbe3c27c62ae3700c2f7fdba027e1150ad904700272836e4c0", size = 20521 }
+dependencies = [
+    { name = "beartype" },
+    { name = "natsort" },
+    { name = "ok-logging-setup" },
+    { name = "pyserial" },
+    { name = "types-pyserial" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/42/6f/1d9522892a2e4b55e2f017c2f374582b03df8f242585c72cd3a2f5aa69f8/ok_serial-0.2.tar.gz", hash = "sha256:f197d172e3edd1a187053946bc70dc1c832e27e1474ca0249c385a250b9f43cb", size = 13212 }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/1f/8d/3820c5a42cf6a8f1ae175e3d2aa92c84954001777ba94e7859f25fdcd3db/ok_logging_setup-0.2-py3-none-any.whl", hash = "sha256:102f97c395be5921f4b7275f1eefea40695deb2e67048733b1f3fe7f766728bb", size = 7668 },
+    { url = "https://files.pythonhosted.org/packages/b6/66/057594d1eda397cc8261968977ad1992fb88180cc56a276b07f5e85cb9ca/ok_serial-0.2-py3-none-any.whl", hash = "sha256:961b40686a3a3644b441d6c87839f80286f3837759d7d058317449a34a5a71dc", size = 16060 },
 ]
 
 [[package]]
@@ -165,6 +202,15 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/bf/4b/3c4cf635311b6203f17c2d693dc15e898969983dd3f729bee3c428aa60d4/python-debian-1.0.1.tar.gz", hash = "sha256:3ada9b83a3d671b58081782c0969cffa0102f6ce433fbbc7cf21275b8b5cc771", size = 127249 }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/ba/15/e8096189b18dda72e4923622abc10b021ecff723b397e22eff29fb86637b/python_debian-1.0.1-py3-none-any.whl", hash = "sha256:8f137c230c1d9279c2ac892b35915068b2aca090c9fd3da5671ff87af32af12c", size = 137453 },
+]
+
+[[package]]
+name = "types-pyserial"
+version = "3.5.0.20251001"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/e2/d4/7afd97ee3e2b4cf5c70e559748f3583f646ff3dbc4a65b26fc51d2aff985/types_pyserial-3.5.0.20251001.tar.gz", hash = "sha256:627a1965c4b874f8b5851dc88c60896696dfd1af0491836c77a60a633dca0ad4", size = 19848 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/78/4d/9437e214780de833165f52728709e8a3130015fe536d4fbb3139f7353b3f/types_pyserial-3.5.0.20251001-py3-none-any.whl", hash = "sha256:334f9f1b5c122dcc3ce6a6142e46450cc80b684032d6ad333362077f191dea23", size = 25331 },
 ]
 
 [[package]]

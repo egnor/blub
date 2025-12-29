@@ -6,10 +6,3 @@ profiles:
     platforms:
       - platform: rp2040:rp2040 (5.4.2)
         platform_index_url: https://github.com/earlephilhower/arduino-pico/releases/download/global/package_rp2040_index.json
-    libraries:
-      - CircularBuffer (1.4.0)
-      - Everyday Pixel Fonts (0.1)
-      - OK Little Layout (0.3)
-      - OK Logging (0.3)
-      - U8g2 (2.35.30)
-      - dir: /home/egnor/source/ok_micro_dock
