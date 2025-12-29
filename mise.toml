@@ -14,8 +14,8 @@ ARDUINO_DIRECTORIES_DATA = "{{config_root}}/dev.tmp/arduino"
 ARDUINO_LIBRARY_ENABLE_UNSAFE_INSTALL = "true"
 
 [vars]
-u_args = "--port /media/{{env.USER}}/RPI-RP2"
-m_args = "--port $(okserial -l1 RP2040)"
+u_port = "/media/{{env.USER}}/RPI-RP2"
+m_port = "$(okserial -l1 RP2040)"
 
 [tasks]
 cu = { depends = ["c", "u"] }
@@ -27,12 +27,12 @@ run = "arduino-cli compile"
 dir = "{{cwd}}"
 
 [tasks.u]
-run = "arduino-cli upload {{vars.u_args}}"
+run = "port=\"{{vars.u_port}}\"; arduino-cli upload --port \"$port\""
 dir = "{{cwd}}"
 wait_for = "c"
 
 [tasks.m]
-run = "arduino-cli monitor {{vars.m_args}}"
+run = "port=\"{{vars.m_port}}\"; arduino-cli monitor --port \"$port\""
 dir = "{{cwd}}"
 wait_for = "u"
 raw = true
