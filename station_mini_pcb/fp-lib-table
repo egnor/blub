@@ -1,4 +1,0 @@
-(fp_lib_table
-  (version 7)
-  (lib (name "Blub_Parts")(type "KiCad")(uri "/home/egnor/source/blub/shared_pcb/Blub_Parts.pretty")(options "")(descr ""))
-)
