@@ -4,8 +4,8 @@ python = "3.12"
 uv = "latest"
 
 [settings]
+env_shell_expand = false
 experimental = true
-python_compile = false
 
 [env]
 _.python.venv = { path = "dev.tmp/python_venv", create = true }
