@@ -1,7 +1,6 @@
 #include <Arduino.h>
 
 #include <Adafruit_ADS1X15.h>
-#include <ok_device_id.h>
 #include <ok_logging.h>
 
 #include "src/blub_station.h"
