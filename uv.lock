@@ -50,6 +50,7 @@ dependencies = [
     { name = "exif" },
     { name = "ok-logging-setup" },
     { name = "ok-serial", extra = ["cli"] },
+    { name = "ok-subprocess-runner" },
     { name = "paho-mqtt" },
     { name = "pint" },
     { name = "pyocd" },
@@ -62,6 +63,7 @@ requires-dist = [
     { name = "exif", specifier = ">=1.6.1" },
     { name = "ok-logging-setup", specifier = ">=0.2" },
     { name = "ok-serial", extras = ["cli"], specifier = ">=0.3" },
+    { name = "ok-subprocess-runner", specifier = ">=0.4" },
     { name = "paho-mqtt", specifier = "~=2.1" },
     { name = "pint", specifier = "~=0.24" },
     { name = "pyocd", specifier = ">=0.36" },
@@ -428,6 +430,15 @@ cli = [
     { name = "blessed" },
     { name = "click" },
     { name = "ok-logging-setup" },
+]
+
+[[package]]
+name = "ok-subprocess-runner"
+version = "0.4"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/53/07/6fe71c4516138c9f7e65245316dc8cc3fb2f3742472ac3d5cde8c09e959a/ok_subprocess_runner-0.4.tar.gz", hash = "sha256:858c373b61a6c4d8432dd6515c57a546839f40b55638d8abc0b49d9eceb6da27", size = 3869, upload-time = "2026-07-28T01:25:57.412Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/79/bb/14fc1d5c9242b00cee8130bc89386d98ce872f7034a9dff8bd04b2ead160/ok_subprocess_runner-0.4-py3-none-any.whl", hash = "sha256:d59ed372c3c30fab1e9de8a9857eb0e8797ba8f2801b5b793b82bd89e597ee87", size = 4773, upload-time = "2026-07-28T01:25:56.466Z" },
 ]
 
 [[package]]

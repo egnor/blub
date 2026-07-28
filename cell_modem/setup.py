@@ -17,11 +17,13 @@ force a fresh `west update` (e.g. after editing west.yml).
 """
 
 import argparse
-import os
-import subprocess
+import logging
+import ok_logging_setup
 import sys
 import urllib.request
+from ok_subprocess_runner import SubprocessRunner
 from pathlib import Path
+from subprocess import CalledProcessError
 
 NCS_VERSION = "v3.2.1"  # must match the manifest's west.yml
 BOARD = "circuitdojo_feather_nrf9151/nrf9151/ns"
@@ -40,34 +42,30 @@ WORKSPACE_DIR = NCS_DIR / "west"
 MANIFEST_DIR = WORKSPACE_DIR / "circuitdojo-ncs-serial-modem"
 VENV_BIN = BLUB_DIR / "dev.tmp" / "python_venv" / "bin"
 
-ENV = {
-    **os.environ,
-    "NRFUTIL_HOME": str(NCS_DIR / "nrfutil-home"),
-    "CMSIS_PACK_ROOT": str(NCS_DIR / "cmsis-packs"),
-    "UV_PROJECT_ENVIRONMENT": str(VENV_BIN.parent),
+EXTRA_ENV = {
+    "NRFUTIL_HOME": NCS_DIR / "nrfutil-home",
+    "CMSIS_PACK_ROOT": NCS_DIR / "cmsis-packs",
+    "UV_PROJECT_ENVIRONMENT": VENV_BIN.parent,
 }
 
+TOOLCHAIN_PREFIX = [
+    *(NRFUTIL_BIN, "toolchain-manager", "launch"),
+    *("--ncs-version", NCS_VERSION, "--chdir", WORKSPACE_DIR, "--"),
+]
 
-def run(*cmd, cwd=None, check=True, capture=False):
-    cmd = [str(c) for c in cmd]
-    print(f"▶ {' '.join(cmd)}", file=sys.stderr)
-    return subprocess.run(
-        cmd, cwd=cwd, env=ENV, check=check,
-        capture_output=capture, text=capture,
-    )
+sub = SubprocessRunner(env=EXTRA_ENV)
 
-
-def in_toolchain(*cmd, cwd):
-    """Run a command inside the pinned NCS toolchain environment."""
-    run(NRFUTIL_BIN, "toolchain-manager", "launch",
-        "--ncs-version", NCS_VERSION, "--chdir", cwd, "--", *cmd)
+toolchain_sub = SubprocessRunner(args_prefix=TOOLCHAIN_PREFIX, env=EXTRA_ENV)
 
 
 def main():
+    ok_logging_setup.install()
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "--update", action="store_true",
-        help="force `west update` even if the workspace looks complete")
+        "--update",
+        action="store_true",
+        help="force `west update` even if the workspace looks complete",
+    )
     args = parser.parse_args()
 
     NCS_DIR.mkdir(parents=True, exist_ok=True)
@@ -75,60 +73,64 @@ def main():
 
     # 1. the nrfutil binary itself (delete dev.tmp/ncs/nrfutil to re-download)
     if not NRFUTIL_BIN.exists():
-        print(f"▶ download {NRFUTIL_URL}", file=sys.stderr)
+        logging.info("📥 %s", NRFUTIL_URL)
         tmp = NRFUTIL_BIN.with_suffix(".part")
         urllib.request.urlretrieve(NRFUTIL_URL, tmp)
         tmp.chmod(0o755)
         tmp.rename(NRFUTIL_BIN)
 
     # 2. the toolchain-manager subcommand (a plugin nrfutil installs)
-    if run(NRFUTIL_BIN, "toolchain-manager", "--version",
-           check=False, capture=True).returncode != 0:
-        run(NRFUTIL_BIN, "install", "toolchain-manager")
+    try:
+        sub(NRFUTIL_BIN, "toolchain-manager", "--version")
+    except CalledProcessError:
+        sub(NRFUTIL_BIN, "install", "toolchain-manager")
 
     # 3. the NCS toolchain bundle (compiler, west, python, ...; ~6 GB)
-    run(NRFUTIL_BIN, "toolchain-manager", "config",
-        "--set", f"install-dir={NCS_DIR / 'toolchains'}")
-    listing = run(NRFUTIL_BIN, "toolchain-manager", "list",
-                  check=False, capture=True)
-    if NCS_VERSION not in (listing.stdout or ""):
-        run(NRFUTIL_BIN, "toolchain-manager", "install",
-            "--ncs-version", NCS_VERSION)
+    sub(
+        *(NRFUTIL_BIN, "toolchain-manager", "config"),
+        *("--set", f"install-dir={NCS_DIR / 'toolchains'}"),
+    )
+    listing = sub.stdout_lines(NRFUTIL_BIN, "toolchain-manager", "list")
+    if NCS_VERSION not in listing:
+        sub(
+            *(NRFUTIL_BIN, "toolchain-manager", "install"),
+            *("--ncs-version", NCS_VERSION),
+        )
 
     # 4. the manifest + app repo (Circuit Dojo's Serial Modem fork; only it
     #    pulls in `nfed`, which has the Feather board definition)
     if not (MANIFEST_DIR / ".git").exists():
-        run("git", "clone", SM_REPO_URL, MANIFEST_DIR)
-    head = run("git", "-C", MANIFEST_DIR, "rev-parse", "HEAD",
-               capture=True).stdout.strip()
+        sub("git", "clone", SM_REPO_URL, MANIFEST_DIR)
+    head = sub.stdout_lines("git", "-C", MANIFEST_DIR, "rev-parse", "HEAD")[0]
     if head != SM_REPO_REV:
-        if run("git", "-C", MANIFEST_DIR, "status", "--porcelain",
-               capture=True).stdout.strip():
-            sys.exit(f"ERROR: {MANIFEST_DIR} has local changes; "
-                     f"stash/commit them or move it aside, then rerun")
+        if sub.stdout_text("git", "-C", MANIFEST_DIR, "status", "--porcelain"):
+            sys.exit(
+                f"ERROR: {MANIFEST_DIR} has local changes; "
+                f"stash/commit them or move it aside, then rerun"
+            )
         # fetch the pin explicitly: it may no longer be on any branch tip
-        run("git", "-C", MANIFEST_DIR, "fetch", "origin", SM_REPO_REV)
-        run("git", "-C", MANIFEST_DIR, "checkout", SM_REPO_REV)
+        sub("git", "-C", MANIFEST_DIR, "fetch", "origin", SM_REPO_REV)
+        sub("git", "-C", MANIFEST_DIR, "checkout", SM_REPO_REV)
 
     # 5. west workspace init + module checkout (~5 GB on first run)
     if not (WORKSPACE_DIR / ".west").exists():
-        in_toolchain("west", "init", "-l", MANIFEST_DIR.name, cwd=WORKSPACE_DIR)
-    in_toolchain("west", "config", "build.board", BOARD, cwd=WORKSPACE_DIR)
+        toolchain_sub("west", "init", "-l", MANIFEST_DIR.name)
+    toolchain_sub("west", "config", "build.board", BOARD)
     if args.update or not (WORKSPACE_DIR / "zephyr").exists():
-        in_toolchain("west", "update", cwd=WORKSPACE_DIR)
+        toolchain_sub("west", "update")
 
     # 6. pyOCD (flashes via the Feather's onboard RP2040 CMSIS-DAP probe;
     #    it's a blub dev dependency, so it lives in the project venv)
     if not (VENV_BIN / "pyocd").exists():
-        run("uv", "sync", cwd=BLUB_DIR)
+        sub("uv", "sync", cwd=BLUB_DIR)
     if not list((NCS_DIR / "cmsis-packs").rglob("*.pack")):
-        run(VENV_BIN / "pyocd", "pack", "install", PYOCD_TARGET)
+        sub(VENV_BIN / "pyocd", "pack", "install", PYOCD_TARGET)
 
-    print(f"""
-✔ NCS workspace ready in {NCS_DIR}
-Next steps (see {BLUB_DIR / 'ncs' / 'README.md'}):
-  ncs/ncs west build   # build Serial Modem for the nRF9151 Feather
-  ncs/ncs west flash   # flash it over USB (pyOCD / CMSIS-DAP)""")
+    logging.info(f"""
+✅ NCS workspace ready in {NCS_DIR}
+Next steps (see {BLUB_DIR / "ncs" / "README.md"}):
+  cell_modem/ncs.sh west build   # build Serial Modem for the nRF9151 Feather
+  cell_modem/ncs.sh west flash   # flash it over USB (pyOCD / CMSIS-DAP)""")
 
 
 if __name__ == "__main__":

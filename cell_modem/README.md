@@ -15,24 +15,24 @@ workspace — nrfutil, the NCS v3.2.1 toolchain bundle, and the west module tree
 ~11 GB total — is constructed under `dev.tmp/ncs/` (git-ignored) by:
 
 ```bash
-ncs/setup             # idempotent; reruns are quick, --update refreshes modules
+cell_modem/setup.py  # idempotent; reruns are quick, --update refreshes modules
 ```
 
 ## Cheat sheet
 
-`ncs/ncs` runs any command inside the pinned NCS toolchain environment, with
+`cell_modem/ncs.sh` runs any command inside the pinned NCS toolchain environment, with
 the Serial Modem app directory (`dev.tmp/ncs/west/circuitdojo-ncs-serial-modem/app`)
 as the working directory. The board target
 (`circuitdojo_feather_nrf9151/nrf9151/ns`) is preset via `west config
 build.board`, so plain `west build` does the right thing.
 
 ```bash
-ncs/ncs west build                      # incremental build
-ncs/ncs west build -p                   # pristine (clean) build
-ncs/ncs west flash                      # flash over USB (pyOCD, CMSIS-DAP)
-ncs/ncs pyocd rtt -t nRF9160_xxAA       # RTT console: boot banner, logs, errors
-ncs/ncs pyocd reset -t nRF9160_xxAA     # reset the target
-ncs/ncs                                 # interactive shell in the toolchain env
+cell_modem/ncs.sh west build                   # incremental build
+cell_modem/ncs.sh west build -p                # pristine (clean) build
+cell_modem/ncs.sh west flash                   # flash over USB (pyOCD, CMSIS-DAP)
+cell_modem/ncs.sh pyocd rtt -t nRF9160_xxAA    # RTT console: boot banner, logs, errors
+cell_modem/ncs.sh pyocd reset -t nRF9160_xxAA  # reset the target
+cell_modem/ncs.sh                              # interactive shell in the toolchain env
 ```
 
 (pyOCD targets `nRF9160_xxAA` because the nRF9151 isn't in the CMSIS packs yet;
@@ -69,12 +69,12 @@ NCS config is layered; don't fork source to configure things:
   CR termination, ...). Fine for local experiments, but note the checkout in
   `dev.tmp/` is disposable.
 - For changes worth keeping, put a `.conf` (Kconfig) or `.overlay` (devicetree)
-  file **here in `ncs/`**, check it in, and pass it at build time (absolute
+  file **here in `cell_modem/`**, check it in, and pass it at build time (absolute
   path, since builds run from the app dir):
 
   ```bash
-  EXTRA_DTC_OVERLAY_FILE=$PWD/ncs/my-pins.overlay ncs/ncs west build -p
-  EXTRA_CONF_FILE=$PWD/ncs/my-tweaks.conf ncs/ncs west build -p
+  EXTRA_DTC_OVERLAY_FILE=$PWD/cell_modem/my-pins.overlay cell_modem/ncs.sh west build -p
+  EXTRA_CONF_FILE=$PWD/cell_modem/my-tweaks.conf cell_modem/ncs.sh west build -p
   ```
 
   Use the `EXTRA_*` forms (not `CONF_FILE`/`DTC_OVERLAY_FILE`, which *replace*
@@ -87,6 +87,6 @@ overlay needed).
 
 ## Pinned versions
 
-`ncs/setup` pins NCS `v3.2.1` (matching the fork's `west.yml`) and a specific
+`cell_modem/setup.py` pins NCS `v3.2.1` (matching the fork's `west.yml`) and a specific
 commit of the fork; bump the constants at the top of the script to upgrade,
-then rerun `ncs/setup --update` and do a pristine build.
+then rerun `cell_modem/setup.py --update` and do a pristine build.

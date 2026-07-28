@@ -11,9 +11,13 @@ dependencies = [
   "exif>=1.6.1",
   "ok-logging-setup>=0.2",
   "ok-serial[cli]>=0.3",
+  "ok-subprocess-runner>=0.4",
   "paho-mqtt~=2.1",
   "pint~=0.24",
-  "pyocd>=0.36",           # for ncs/ to use its onboard CMSIS-DAP probe
+  "pyocd>=0.36",               # for ncs/ to use its onboard CMSIS-DAP probe
   "pyserial~=3.5",
   "python-debian>=1.0.1",
 ]
+
+[tool.ruff]
+line-length = 80
