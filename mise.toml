@@ -38,4 +38,8 @@ wait_for = "u"
 raw = true
 
 [hooks]
-postinstall = ["git lfs install --local", "git lfs pull", "uv sync"]
+postinstall = """
+git lfs install --local
+git lfs pull
+uv sync
+"""
