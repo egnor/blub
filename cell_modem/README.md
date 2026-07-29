@@ -11,7 +11,7 @@ Builds Nordic's [Serial Modem][sm] AT-command firmware for the
 [nfed]: https://github.com/circuitdojo/nrf9160-feather-examples-and-drivers
 
 Only this directory (two scripts and this file) is checked in. The actual
-workspace — nrfutil, the NCS v3.2.1 toolchain bundle, and the west module tree,
+workspace — nrfutil, the NCS v3.4.0 toolchain bundle, and the west module tree,
 ~11 GB total — is constructed under `dev.tmp/ncs/` (git-ignored) by:
 
 ```bash
@@ -87,6 +87,13 @@ overlay needed).
 
 ## Pinned versions
 
-`cell_modem/setup.py` pins NCS `v3.2.1` (matching the fork's `west.yml`) and a specific
-commit of the fork; bump the constants at the top of the script to upgrade,
-then rerun `cell_modem/setup.py --update` and do a pristine build.
+`cell_modem/setup.py` pins a specific commit of the fork, plus the NCS toolchain
+bundle version to build it with (`NCS_VERSION`, duplicated in `ncs.sh`). The
+fork's `west.yml` pins the NCS tree itself, nowadays to a bare SHA rather than a
+tag — resolve it against `dev.tmp/ncs/west/nrf` (`git describe --tags <sha>`) to
+find which toolchain bundle to ask for. As of the current pin that's
+`v3.4.0-rc1-87-g1c36e48027`, hence toolchain `v3.4.0`.
+
+To upgrade: bump the constants, rerun `cell_modem/setup.py --update`, and do a
+pristine build. A toolchain bump means a fresh ~6 GB download; the old bundle
+stays in `dev.tmp/ncs/toolchains/` until you delete it.

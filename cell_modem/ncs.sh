@@ -10,7 +10,7 @@
 # Run ./setup (idempotent) first to construct the workspace in dev.tmp/ncs/.
 set -euo pipefail
 
-NCS_VERSION="v3.2.1"
+NCS_VERSION="v3.4.0"  # keep in sync with setup.py
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TMP="$(dirname "$HERE")/dev.tmp/ncs"
 APP="$TMP/west/circuitdojo-ncs-serial-modem/app"

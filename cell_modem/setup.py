@@ -25,10 +25,10 @@ from ok_subprocess_runner import SubprocessRunner
 from pathlib import Path
 from subprocess import CalledProcessError
 
-NCS_VERSION = "v3.2.1"  # must match the manifest's west.yml
+NCS_VERSION = "v3.4.0"  # toolchain bundle; must suit the manifest's west.yml
 BOARD = "circuitdojo_feather_nrf9151/nrf9151/ns"
 SM_REPO_URL = "https://github.com/circuitdojo/ncs-serial-modem"
-SM_REPO_REV = "7253fb9f0422f33e14545cd40dbbe34787d1c35c"
+SM_REPO_REV = "6dc6a397836465fcff6b5d9de9b604e7f33bb753"
 NRFUTIL_URL = (
     "https://files.nordicsemi.com/artifactory/swtools/external/nrfutil/"
     "executables/x86_64-unknown-linux-gnu/nrfutil"
@@ -128,7 +128,7 @@ def main():
 
     logging.info(f"""
 ✅ NCS workspace ready in {NCS_DIR}
-Next steps (see {BLUB_DIR / "ncs" / "README.md"}):
+Next steps (see {BLUB_DIR / "cell_modem" / "README.md"}):
   cell_modem/ncs.sh west build   # build Serial Modem for the nRF9151 Feather
   cell_modem/ncs.sh west flash   # flash it over USB (pyOCD / CMSIS-DAP)""")
 
