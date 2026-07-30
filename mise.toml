@@ -2,16 +2,30 @@
 arduino = "1.5.0"
 python = "3.12"
 uv = "latest"
+"github:probe-rs/probe-rs" = { matching = "probe-rs-tools", version = "0.32" }
+
+[tools."http:nrfutil"]
+version = "0.0"
+
+[tools."http:nrfutil".platforms.linux-x64]
+url = "https://files.nordicsemi.com/artifactory/swtools/external/nrfutil/executables/x86_64-unknown-linux-gnu/nrfutil"
 
 [settings]
 env_shell_expand = false
 experimental = true
 
 [env]
+# python & uv
 _.python.venv = { path = "dev.tmp/python_venv", create = true }
 UV_PROJECT_ENVIRONMENT = "{{config_root}}/dev.tmp/python_venv"
+
+# Arduino
 ARDUINO_DIRECTORIES_DATA = "{{config_root}}/dev.tmp/arduino"
 ARDUINO_LIBRARY_ENABLE_UNSAFE_INSTALL = "true"
+
+# Nordic tools
+_.path = { path = "{{config_root}}/dev.tmp/ncs/bin" }
+NRFUTIL_HOME = "{{config_root}}/dev.tmp/ncs"
 
 [vars]
 uf2_dir = "/media/{{env.USER}}/RPI-RP2"

@@ -11,17 +11,17 @@ Builds Nordic's [Serial Modem][sm] AT-command firmware for the
 [nfed]: https://github.com/circuitdojo/nrf9160-feather-examples-and-drivers
 
 Only this directory (two scripts and this file) is checked in. The actual
-workspace — nrfutil, the NCS v3.4.0 toolchain bundle, and the west module tree,
+build directory — the NCS v3.4.0 toolchain bundle and the west workspace,
 ~11 GB total — is constructed under `dev.tmp/ncs/` (git-ignored) by:
 
 ```bash
-cell_modem/setup.py  # idempotent; reruns are quick, --update refreshes modules
+cell_modem/setup.py  # idempotent; safe to rerun
 ```
 
 ## Cheat sheet
 
 `cell_modem/ncs.sh` runs any command inside the pinned NCS toolchain environment, with
-the Serial Modem app directory (`dev.tmp/ncs/west/circuitdojo-ncs-serial-modem/app`)
+the Serial Modem app directory (`dev.tmp/ncs/workspace/circuitdojo-ncs-serial-modem/app`)
 as the working directory. The board target
 (`circuitdojo_feather_nrf9151/nrf9151/ns`) is preset via `west config
 build.board`, so plain `west build` does the right thing.
@@ -29,15 +29,43 @@ build.board`, so plain `west build` does the right thing.
 ```bash
 cell_modem/ncs.sh west build                   # incremental build
 cell_modem/ncs.sh west build -p                # pristine (clean) build
-cell_modem/ncs.sh west flash                   # flash over USB (pyOCD, CMSIS-DAP)
-cell_modem/ncs.sh pyocd rtt -t nRF9160_xxAA    # RTT console: boot banner, logs, errors
-cell_modem/ncs.sh pyocd reset -t nRF9160_xxAA  # reset the target
+cell_modem/ncs.sh west flash                   # reflash the app over USB (probe-rs, CMSIS-DAP)
+cell_modem/ncs.sh probe-rs reset --chip nRF9151_xxAA                        # reset the target
+cell_modem/ncs.sh probe-rs attach --chip nRF9151_xxAA build/app/zephyr/zephyr.elf  # RTT logs
 cell_modem/ncs.sh                              # interactive shell in the toolchain env
 ```
 
-(pyOCD targets `nRF9160_xxAA` because the nRF9151 isn't in the CMSIS packs yet;
-the 9160 is register-compatible for flashing. The Feather's onboard RP2040 is
-the debug probe — no J-Link needed.)
+(All target access goes through probe-rs and the Feather's onboard RP2040
+CMSIS-DAP probe — no J-Link needed. The probe is single-client: quit an
+`attach` before flashing/resetting. Note the stock app config sends logs to
+uart0, not RTT — see Hardware notes.)
+
+## Flashing details
+
+The app builds with Circuit Dojo's sysbuild config: NSIB (`b0`) + MCUboot
+bootloaders, with `b0`'s provisioning data (key hashes etc.) in the nRF91
+**UICR** at `0xFF8000`. That has two consequences:
+
+- **pyOCD can't flash this image** — its nRF9160 pack can't program UICR
+  (`flash program page failure (address 0x00ff8000)`), so flashing uses
+  **probe-rs** instead (installed by `mise`)
+- **UICR can't be rewritten in place**, so the bootloader + provisioning
+  images only flash onto an erased chip.
+
+`setup.py` therefore sets a west alias so that plain `west flash` means
+`flash --runner probe-rs --domain app` — it reflashes just the (signed) app
+image, which is all everyday iteration needs. To provision a blank board, or
+after changing bootloader/sysbuild config, erase and flash everything:
+
+```bash
+cell_modem/ncs.sh probe-rs erase --chip nRF9151_xxAA --allow-erase-all
+cell_modem/ncs.sh probe-rs download --binary-format hex --chip nRF9151_xxAA build/merged.hex
+cell_modem/ncs.sh probe-rs reset --chip nRF9151_xxAA
+```
+
+If probe-rs reports `Core 0 is locked` (APPROTECT can end up engaged, e.g.
+after a failed flash), the same `probe-rs erase --allow-erase-all` recovers
+the chip — at the cost of a full erase, so re-provision afterwards.
 
 Talking AT to the modem (115200 8N1, **CR** line ending; the blub venv already
 has pyserial):
@@ -57,7 +85,16 @@ The AT interface is nRF9151 **uart0** (TX P0.11 / RX P0.10, no flow control),
 which on the Feather is wired to **both** the RP2040 USB-serial bridge
 (`/dev/ttyACM*`) **and** the header TX/RX pins — so the same firmware serves
 USB bench use and TTL wiring to a sibling MCU (cross TX/RX, common ground,
-3.3 V) with no rebuild. App console/logs go to RTT, not the UART.
+3.3 V) with no rebuild.
+
+In the stock config the Zephyr console and log backend also use uart0, so the
+boot banner (and any log spew) shares the AT port. For clean separation, build
+with an RTT logging fragment and read logs with `probe-rs attach`:
+
+```bash
+printf 'CONFIG_USE_SEGGER_RTT=y\nCONFIG_LOG_BACKEND_RTT=y\n' > /tmp/rtt.conf
+cell_modem/ncs.sh west build -p -- -DEXTRA_CONF_FILE=/tmp/rtt.conf
+```
 
 ## Tweaking configuration (pinouts etc.)
 
@@ -90,10 +127,10 @@ overlay needed).
 `cell_modem/setup.py` pins a specific commit of the fork, plus the NCS toolchain
 bundle version to build it with (`NCS_VERSION`, duplicated in `ncs.sh`). The
 fork's `west.yml` pins the NCS tree itself, nowadays to a bare SHA rather than a
-tag — resolve it against `dev.tmp/ncs/west/nrf` (`git describe --tags <sha>`) to
+tag — resolve it against `dev.tmp/ncs/workspace/nrf` (`git describe --tags <sha>`) to
 find which toolchain bundle to ask for. As of the current pin that's
 `v3.4.0-rc1-87-g1c36e48027`, hence toolchain `v3.4.0`.
 
-To upgrade: bump the constants, rerun `cell_modem/setup.py --update`, and do a
+To upgrade: bump the constants, rerun `cell_modem/setup.py`, and do a
 pristine build. A toolchain bump means a fresh ~6 GB download; the old bundle
 stays in `dev.tmp/ncs/toolchains/` until you delete it.

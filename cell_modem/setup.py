@@ -4,133 +4,92 @@ Idempotently builds an nRF Connect SDK (NCS) west workspace under dev.tmp/ncs/
 for building Nordic's Serial Modem firmware for the Circuit Dojo nRF9151
 Feather. See README.md next to this script for everyday usage.
 
-Everything big lives under dev.tmp/ncs/ (git-ignored):
-  nrfutil        - Nordic's CLI (a single static binary)
-  nrfutil-home/  - NRFUTIL_HOME (installed nrfutil commands, config, logs)
-  toolchains/    - the NCS toolchain bundle (compiler, west, python; ~6 GB)
-  cmsis-packs/   - CMSIS device packs, used by pyOCD for flashing
-  west/          - the west workspace (manifest/app repo + NCS source, ~5 GB)
+Everything big lives under dev.tmp/ncs/ (git-ignored; it is $NRFUTIL_HOME):
+  bin/           - nrfutil's self-install + its command plugins (on PATH
+                   via mise, which also bootstraps nrfutil & probe-rs)
+  downloads/     - the NCS toolchain bundle download cache
+  toolchains/    - the NCS toolchain bundle (compiler, west, python)
+  tmp/           - temporary downloads etc
+  workspace/     - the west workspace (manifest/app repo + NCS source)
+  (plus other nrfutil housekeeping: bootstrap/, cache/, config/, logs/, ...)
 
-Safe to rerun: each step is skipped if already done. The slow steps (toolchain
-install, west update) only run when their output is missing; use --update to
-force a fresh `west update` (e.g. after editing west.yml).
+Safe to rerun: completed steps are quick no-ops.
 """
 
 import argparse
+import json
 import logging
 import ok_logging_setup
-import sys
-import urllib.request
-from ok_subprocess_runner import SubprocessRunner
+import os
+from ok_subprocess_runner import run, stdout_text, SubprocessRunner
 from pathlib import Path
-from subprocess import CalledProcessError
 
-NCS_VERSION = "v3.4.0"  # toolchain bundle; must suit the manifest's west.yml
+APP_REPO_URL = "https://github.com/circuitdojo/ncs-serial-modem"
+APP_REPO_REV = "6dc6a397836465fcff6b5d9de9b604e7f33bb753"
 BOARD = "circuitdojo_feather_nrf9151/nrf9151/ns"
-SM_REPO_URL = "https://github.com/circuitdojo/ncs-serial-modem"
-SM_REPO_REV = "6dc6a397836465fcff6b5d9de9b604e7f33bb753"
-NRFUTIL_URL = (
-    "https://files.nordicsemi.com/artifactory/swtools/external/nrfutil/"
-    "executables/x86_64-unknown-linux-gnu/nrfutil"
-)
-PYOCD_TARGET = "nRF9160_xxAA"  # flash-compatible stand-in for the nRF9151
-
-BLUB_DIR = Path(__file__).resolve().parent.parent
-NCS_DIR = BLUB_DIR / "dev.tmp" / "ncs"
-NRFUTIL_BIN = NCS_DIR / "nrfutil"
-WORKSPACE_DIR = NCS_DIR / "west"
-MANIFEST_DIR = WORKSPACE_DIR / "circuitdojo-ncs-serial-modem"
-VENV_BIN = BLUB_DIR / "dev.tmp" / "python_venv" / "bin"
-
-EXTRA_ENV = {
-    "NRFUTIL_HOME": NCS_DIR / "nrfutil-home",
-    "CMSIS_PACK_ROOT": NCS_DIR / "cmsis-packs",
-    "UV_PROJECT_ENVIRONMENT": VENV_BIN.parent,
-}
-
-TOOLCHAIN_PREFIX = [
-    *(NRFUTIL_BIN, "toolchain-manager", "launch"),
-    *("--ncs-version", NCS_VERSION, "--chdir", WORKSPACE_DIR, "--"),
-]
-
-sub = SubprocessRunner(env=EXTRA_ENV)
-
-toolchain_sub = SubprocessRunner(args_prefix=TOOLCHAIN_PREFIX, env=EXTRA_ENV)
+NCS_VERSION = "v3.4.0"  # toolchain bundle; must suit the app
+SDK_MANAGER_VERSION = "1.16.1"  # nrfutil plugin (nrfutil itself is unpinnable)
 
 
 def main():
     ok_logging_setup.install()
+    ok_logging_setup.skip_traceback_for(OSError)
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument(
-        "--update",
-        action="store_true",
-        help="force `west update` even if the workspace looks complete",
+    parser.parse_args()
+
+    if not (nrfutil_home_env := os.environ.get("NRFUTIL_HOME")):
+        ok_logging_setup.exit("$NRFUTIL_HOME not set (check mise?)")
+
+    ncs_dir = Path(nrfutil_home_env).resolve()
+    workspace_dir = ncs_dir / "workspace"
+    app_dir = workspace_dir / "circuitdojo-ncs-serial-modem"
+
+    # 1. the NCS toolchain bundle (compiler, west, python, ...)
+    # (`nrfutil install` never up/downgrades an installed plugin, so check)
+    listed = json.loads(stdout_text("nrfutil", "list", "--json"))
+    installed = {
+        c["command"]: c["installed_version"] for c in listed["data"]["commands"]
+    }
+    if installed.get("sdk-manager") != SDK_MANAGER_VERSION:
+        if "sdk-manager" in installed:
+            run("nrfutil", "uninstall", "sdk-manager")
+        run("nrfutil", "install", f"sdk-manager={SDK_MANAGER_VERSION}")
+    run("nrfutil", "sdk-manager", "config", "install-dir", "set", ncs_dir)
+    run("nrfutil", "sdk-manager", "install", NCS_VERSION)
+
+    # 2. the app repo at the pinned commit
+    if not (app_dir / ".git").is_dir():
+        app_dir.parent.mkdir(exist_ok=True, parents=True)
+        run("git", "clone", APP_REPO_URL, app_dir)
+    if stdout_text("git", "-C", app_dir, "status", "--porcelain"):
+        ok_logging_setup.exit("%s has uncommitted changes", app_dir)
+    run("git", "-C", app_dir, "fetch", "origin", APP_REPO_REV)
+    run("git", "-C", app_dir, "checkout", APP_REPO_REV)
+
+    # 3. build the west workspace around the app repo & its manifest
+    sub_with_toolchain = SubprocessRunner(
+        args_prefix=[
+            *("nrfutil", "sdk-manager", "toolchain", "launch"),
+            *(f"--ncs-version={NCS_VERSION}", f"--chdir={workspace_dir}"),
+            "--",
+        ]
     )
-    args = parser.parse_args()
-
-    NCS_DIR.mkdir(parents=True, exist_ok=True)
-    WORKSPACE_DIR.mkdir(exist_ok=True)
-
-    # 1. the nrfutil binary itself (delete dev.tmp/ncs/nrfutil to re-download)
-    if not NRFUTIL_BIN.exists():
-        logging.info("📥 %s", NRFUTIL_URL)
-        tmp = NRFUTIL_BIN.with_suffix(".part")
-        urllib.request.urlretrieve(NRFUTIL_URL, tmp)
-        tmp.chmod(0o755)
-        tmp.rename(NRFUTIL_BIN)
-
-    # 2. the toolchain-manager subcommand (a plugin nrfutil installs)
-    try:
-        sub(NRFUTIL_BIN, "toolchain-manager", "--version")
-    except CalledProcessError:
-        sub(NRFUTIL_BIN, "install", "toolchain-manager")
-
-    # 3. the NCS toolchain bundle (compiler, west, python, ...; ~6 GB)
-    sub(
-        *(NRFUTIL_BIN, "toolchain-manager", "config"),
-        *("--set", f"install-dir={NCS_DIR / 'toolchains'}"),
+    if not (workspace_dir / ".west").is_dir():
+        sub_with_toolchain("west", "init", "-l", app_dir.name)
+    sub_with_toolchain("west", "config", "build.board", BOARD)
+    # `west flash` = reflash the app image with probe-rs (see README.md);
+    # the default pyocd runner can't program UICR, and the non-app domains
+    # (b0, mcuboot, provisioning) only flash onto an erased chip anyway
+    sub_with_toolchain(
+        "west", "config", "alias.flash", "flash --runner probe-rs --domain app"
     )
-    listing = sub.stdout_lines(NRFUTIL_BIN, "toolchain-manager", "list")
-    if NCS_VERSION not in listing:
-        sub(
-            *(NRFUTIL_BIN, "toolchain-manager", "install"),
-            *("--ncs-version", NCS_VERSION),
-        )
-
-    # 4. the manifest + app repo (Circuit Dojo's Serial Modem fork; only it
-    #    pulls in `nfed`, which has the Feather board definition)
-    if not (MANIFEST_DIR / ".git").exists():
-        sub("git", "clone", SM_REPO_URL, MANIFEST_DIR)
-    head = sub.stdout_lines("git", "-C", MANIFEST_DIR, "rev-parse", "HEAD")[0]
-    if head != SM_REPO_REV:
-        if sub.stdout_text("git", "-C", MANIFEST_DIR, "status", "--porcelain"):
-            sys.exit(
-                f"ERROR: {MANIFEST_DIR} has local changes; "
-                f"stash/commit them or move it aside, then rerun"
-            )
-        # fetch the pin explicitly: it may no longer be on any branch tip
-        sub("git", "-C", MANIFEST_DIR, "fetch", "origin", SM_REPO_REV)
-        sub("git", "-C", MANIFEST_DIR, "checkout", SM_REPO_REV)
-
-    # 5. west workspace init + module checkout (~5 GB on first run)
-    if not (WORKSPACE_DIR / ".west").exists():
-        toolchain_sub("west", "init", "-l", MANIFEST_DIR.name)
-    toolchain_sub("west", "config", "build.board", BOARD)
-    if args.update or not (WORKSPACE_DIR / "zephyr").exists():
-        toolchain_sub("west", "update")
-
-    # 6. pyOCD (flashes via the Feather's onboard RP2040 CMSIS-DAP probe;
-    #    it's a blub dev dependency, so it lives in the project venv)
-    if not (VENV_BIN / "pyocd").exists():
-        sub("uv", "sync", cwd=BLUB_DIR)
-    if not list((NCS_DIR / "cmsis-packs").rglob("*.pack")):
-        sub(VENV_BIN / "pyocd", "pack", "install", PYOCD_TARGET)
+    sub_with_toolchain("west", "update")
 
     logging.info(f"""
-✅ NCS workspace ready in {NCS_DIR}
-Next steps (see {BLUB_DIR / "cell_modem" / "README.md"}):
+✅ NCS workspace ready in {ncs_dir}
+Next steps (see cell_modem/README.md):
   cell_modem/ncs.sh west build   # build Serial Modem for the nRF9151 Feather
-  cell_modem/ncs.sh west flash   # flash it over USB (pyOCD / CMSIS-DAP)""")
+  cell_modem/ncs.sh west flash   # flash it over USB (probe-rs / CMSIS-DAP)""")
 
 
 if __name__ == "__main__":
