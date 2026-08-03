@@ -1,22 +1,25 @@
-# nRF9151 Feather — Serial Modem firmware (NCS workspace)
+# nRF9151 Feather — Serial Modem firmware build tools
 
-Builds Nordic's [Serial Modem][sm] AT-command firmware for the
+Scripts to build Nordic's [Serial Modem][sm] AT-command firmware for the
 [Circuit Dojo nRF9151 Feather][feather], using [Circuit Dojo's fork][fork] of
-`ncs-serial-modem` (only the fork pulls in [nfed][nfed], which provides the
-`circuitdojo_feather_nrf9151` board, plus ready-made board overlay files).
+`ncs-serial-modem` (the fork pulls in [nfed][nfed], which provides the
+`circuitdojo_feather_nrf9151` board, plus ready-made board overlay files),
+all based on Nordic's [nRF Connect SDK (NCS)][ncs].
 
 [sm]: https://nrfconnectdocs.nordicsemi.com/addons/addon-serial_modem/latest/index.html
 [feather]: https://www.circuitdojo.com/products/nrf9151-feather
 [fork]: https://github.com/circuitdojo/ncs-serial-modem
 [nfed]: https://github.com/circuitdojo/nrf9160-feather-examples-and-drivers
+[ncs]: https://www.nordicsemi.com/Products/Development-software/nRF-Connect-SDK
 
-Only this directory (two scripts and this file) is checked in. The actual
-build directory — the NCS v3.4.0 toolchain bundle and the west workspace,
-~11 GB total — is constructed under `dev.tmp/ncs/` (git-ignored) by:
+The actual build happens in `dev.tmp/ncs`:
 
-```bash
-cell_modem/setup.py  # idempotent; safe to rerun
-```
+- bin/         - nrfutil's self-install + command plugins (on PATH via mise)
+- downloads/   - NCS toolchain bundle download cache
+- toolchains/  - NCS toolchain bundle (compiler, west, python)
+- tmp/         - temporary downloads etc
+- workspace/   - west workspace for building (manifest/app repo + NCS source)
+(plus other nrfutil housekeeping: bootstrap/, cache/, config/, logs/, ...)
 
 ## Cheat sheet
 

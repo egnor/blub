@@ -4,15 +4,6 @@ Idempotently builds an nRF Connect SDK (NCS) west workspace under dev.tmp/ncs/
 for building Nordic's Serial Modem firmware for the Circuit Dojo nRF9151
 Feather. See README.md next to this script for everyday usage.
 
-Everything big lives under dev.tmp/ncs/ (git-ignored; it is $NRFUTIL_HOME):
-  bin/           - nrfutil's self-install + its command plugins (on PATH
-                   via mise, which also bootstraps nrfutil & probe-rs)
-  downloads/     - the NCS toolchain bundle download cache
-  toolchains/    - the NCS toolchain bundle (compiler, west, python)
-  tmp/           - temporary downloads etc
-  workspace/     - the west workspace (manifest/app repo + NCS source)
-  (plus other nrfutil housekeeping: bootstrap/, cache/, config/, logs/, ...)
-
 Safe to rerun: completed steps are quick no-ops.
 """
 

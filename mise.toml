@@ -1,8 +1,9 @@
 [tools]
 arduino = "1.5.0"
 python = "3.12"
-uv = "latest"
+uv = "0.12"
 "github:probe-rs/probe-rs" = { matching = "probe-rs-tools", version = "0.32" }
+"pipx:grip" = "4.6"
 
 [tools."http:nrfutil"]
 version = "0.0"
@@ -17,14 +18,14 @@ experimental = true
 [env]
 # python & uv
 _.python.venv = { path = "dev.tmp/python_venv", create = true }
+
+# Nordic tools
+_.path = { path = "{{config_root}}/dev.tmp/ncs/bin" }
 UV_PROJECT_ENVIRONMENT = "{{config_root}}/dev.tmp/python_venv"
 
 # Arduino
 ARDUINO_DIRECTORIES_DATA = "{{config_root}}/dev.tmp/arduino"
 ARDUINO_LIBRARY_ENABLE_UNSAFE_INSTALL = "true"
-
-# Nordic tools
-_.path = { path = "{{config_root}}/dev.tmp/ncs/bin" }
 NRFUTIL_HOME = "{{config_root}}/dev.tmp/ncs"
 
 [vars]
