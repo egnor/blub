@@ -28,7 +28,12 @@ ARDUINO_LIBRARY_ENABLE_UNSAFE_INSTALL = "true"
 # Nordic tools
 _.path = { path = "{{config_root}}/dev.tmp/ncs/bin" }
 NRFUTIL_HOME = "{{config_root}}/dev.tmp/ncs"
-PROBE_RUN_CHIP = "nRF9151_xxAA"
+PROBE_RS_CHIP = "nRF9151_xxAA"
+
+# Default cell modem build fragments: AT on header uart1, logs to RTT
+# (see cell_modem/README.md; Zephyr reads these at pristine-build time)
+EXTRA_DTC_OVERLAY_FILE = "{{config_root}}/cell_modem/at-header-uart.overlay"
+EXTRA_CONF_FILE = "{{config_root}}/cell_modem/rtt-logs.conf"
 
 [vars]
 uf2_dir = "/media/{{env.USER}}/RPI-RP2"
