@@ -88,8 +88,9 @@ def main():
     logging.info(f"""
 ✅ NCS workspace ready in {ncs_dir}
 Next steps (see cell_modem/README.md):
-  mise run west build   # build Serial Modem for the nRF9151 Feather
-  mise run west flash   # flash it over USB (probe-rs / CMSIS-DAP)""")
+  cd {app_dir}/app
+  west build   # build Serial Modem for the nRF9151 Feather
+  west flash   # flash it over USB (probe-rs / CMSIS-DAP)""")
 
 
 if __name__ == "__main__":
