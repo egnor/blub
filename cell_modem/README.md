@@ -2,9 +2,9 @@
 
 Scripts to build Nordic's [Serial Modem][sm] AT-command firmware for the
 [Circuit Dojo nRF9151 Feather][feather], using [Circuit Dojo's fork][fork] of
-`ncs-serial-modem` (the fork pulls in [nfed][nfed], which provides the
-`circuitdojo_feather_nrf9151` board, plus ready-made board overlay files),
-all based on Nordic's [nRF Connect SDK (NCS)][ncs].
+`ncs-serial-modem` (pulling in [nfed][nfed] to support
+`circuitdojo_feather_nrf9151`), all based on Nordic's
+[nRF Connect SDK (NCS)][ncs].
 
 [sm]: https://nrfconnectdocs.nordicsemi.com/addons/addon-serial_modem/latest/index.html
 [feather]: https://www.circuitdojo.com/products/nrf9151-feather
@@ -12,86 +12,73 @@ all based on Nordic's [nRF Connect SDK (NCS)][ncs].
 [nfed]: https://github.com/circuitdojo/nrf9160-feather-examples-and-drivers
 [ncs]: https://www.nordicsemi.com/Products/Development-software/nRF-Connect-SDK
 
-The actual build happens in `dev.tmp/ncs`:
+## Building
 
-- bin/         - nrfutil's self-install + command plugins (on PATH via mise)
-- downloads/   - NCS toolchain bundle download cache
-- toolchains/  - NCS toolchain bundle (compiler, west, python)
-- tmp/         - temporary downloads etc
-- workspace/   - west workspace for building (manifest/app repo + NCS source)
-(plus other nrfutil housekeeping: bootstrap/, cache/, config/, logs/, ...)
-
-## Cheat sheet
-
-`cell_modem/ncs.sh` runs any command inside the pinned NCS toolchain environment, with
-the Serial Modem app directory (`dev.tmp/ncs/workspace/circuitdojo-ncs-serial-modem/app`)
-as the working directory. The board target
-(`circuitdojo_feather_nrf9151/nrf9151/ns`) is preset via `west config
-build.board`, so plain `west build` does the right thing.
+Make sure `mise` is activated (or run commands with `mise exec -- ...`), then
 
 ```bash
-cell_modem/ncs.sh west build                   # incremental build
-cell_modem/ncs.sh west build -p                # pristine (clean) build
-cell_modem/ncs.sh west flash                   # reflash the app over USB (probe-rs, CMSIS-DAP)
-cell_modem/ncs.sh probe-rs reset --chip nRF9151_xxAA                        # reset the target
-cell_modem/ncs.sh probe-rs attach --chip nRF9151_xxAA build/app/zephyr/zephyr.elf  # RTT logs
-cell_modem/ncs.sh                              # interactive shell in the toolchain env
+cell_modem/setup.py  # download tools, prepare build
+cd dev.tmp/ncs/workspace/circuitdojo-ncs-serial-modem/app  # main app source
+west build -p   # pristine (clean) build
+west build      # incremental build
+west flash      # flash over USB
 ```
 
-(All target access goes through probe-rs and the Feather's onboard RP2040
-CMSIS-DAP probe — no J-Link needed. The probe is single-client: quit an
-`attach` before flashing/resetting. Note the stock app config sends logs to
-uart0, not RTT — see Hardware notes.)
+Paths of note:
+
+- `dev.tmp/ncs` (`$NRFUTIL_HOME`) - root of everything cell-modem related
+- `dev.tmp/ncs/workspace` - `west` (Zephyr build tool) working tree
+- `dev.tmp/ncs/workspace/circuitdojo-ncs-serial-modem` - app checkout
+- `dev.tmp/ncs/workspace/circuitdojo-ncs-serial-modem/app` - main app source
+
+Environment settings come from top-level `mise.toml` and also `mise.local.toml`
+in the workspace (generated from `nrfutil sdk-manager toolchain env`).
 
 ## Flashing details
 
-The app builds with Circuit Dojo's sysbuild config: NSIB (`b0`) + MCUboot
-bootloaders, with `b0`'s provisioning data (key hashes etc.) in the nRF91
-**UICR** at `0xFF8000`. That has two consequences:
+The `west flash` alias does an app-only update. To reprogram from scratch:
 
-- **pyOCD can't flash this image** — its nRF9160 pack can't program UICR
-  (`flash program page failure (address 0x00ff8000)`), so flashing uses
-  **probe-rs** instead (installed by `mise`)
-- **UICR can't be rewritten in place**, so the bootloader + provisioning
-  images only flash onto an erased chip.
-
-`setup.py` therefore sets a west alias so that plain `west flash` means
-`flash --runner probe-rs --domain app` — it reflashes just the (signed) app
-image, which is all everyday iteration needs. To provision a blank board, or
-after changing bootloader/sysbuild config, erase and flash everything:
-
-```bash
-cell_modem/ncs.sh probe-rs erase --chip nRF9151_xxAA --allow-erase-all
-cell_modem/ncs.sh probe-rs download --binary-format hex --chip nRF9151_xxAA build/merged.hex
-cell_modem/ncs.sh probe-rs reset --chip nRF9151_xxAA
+```sh
+cd dev.tmp/ncs/workspace/circuitdojo-ncs-serial-modem/app
+probe-rs erase --allow-erase-all
+probe-rs download --binary-format hex build/merged.hex
+probe-rs reset
 ```
 
-If probe-rs reports `Core 0 is locked` (APPROTECT can end up engaged, e.g.
-after a failed flash), the same `probe-rs erase --allow-erase-all` recovers
-the chip — at the cost of a full erase, so re-provision afterwards.
+To probe the running board: (note, `probe-rs` is single-client)
 
-Talking AT to the modem (115200 8N1, **CR** line ending; the blub venv already
-has pyserial):
+```sh
+cd dev.tmp/ncs/workspace/circuitdojo-ncs-serial-modem/app
+probe-rs reset  # reset the target
+probe-rs attach build/app/zephyr/zephyr.elf  # RTT logs
+```
+
+To talk to the running app:
 
 ```bash
-python -m serial.tools.miniterm --eol CR \
-    /dev/serial/by-id/usb-Raspberry_Pi_Debug_Probe*-if01* 115200
+okserial term cmsis-dap 115200
 ```
 
 Smoke test: `AT` → `OK`, `AT+CGMM` → `nRF9151-LACA`, `AT#XSMVER` → the Serial
 Modem version. The radio is off at boot (`AT+CFUN?` → `0`); `AT+CFUN=1` brings
 it up once a SIM and antenna are connected.
 
+Note, the stock app config sends logs to uart0, not RTT; see below.
+
 ## Hardware notes
 
-The AT interface is nRF9151 **uart0** (TX P0.11 / RX P0.10, no flow control),
-which on the Feather is wired to **both** the RP2040 USB-serial bridge
-(`/dev/ttyACM*`) **and** the header TX/RX pins — so the same firmware serves
-USB bench use and TTL wiring to a sibling MCU (cross TX/RX, common ground,
-3.3 V) with no rebuild.
+The app builds with Circuit Dojo's sysbuild config: NSIB (`b0`) + MCUboot
+bootloaders, with `b0`'s provisioning data (key hashes etc.) in the nRF91
+UICR at `0xFF8000`. `pyOCD` can't program the UICR, so we use `probe-rs`.
+Rewriting the UICR requires erasing the entire chip.
 
-In the stock config the Zephyr console and log backend also use uart0, so the
-boot banner (and any log spew) shares the AT port. For clean separation, build
+The AT interface is nRF9151 uart0 (TX P0.11 / RX P0.10, no flow control),
+which on the Feather is wired to both the RP2040 USB-serial bridge
+(`/dev/ttyACM*`) and header TX/RX pins. The same firmware works over USB and
+with TTL wiring to a sibling MCU (cross TX/RX, common ground, 3.3 V).
+
+In the stock config, the Zephyr console and log backend also use uart0, so the
+boot banner and any log messages share the AT port. For clean separation, build
 with an RTT logging fragment and read logs with `probe-rs attach`:
 
 ```bash
@@ -101,20 +88,18 @@ cell_modem/ncs.sh west build -p -- -DEXTRA_CONF_FILE=/tmp/rtt.conf
 
 ## Tweaking configuration (pinouts etc.)
 
-NCS config is layered; don't fork source to configure things:
+NCS config is layered:
 
 - `app/prj.conf` — application baseline.
-- `app/boards/circuitdojo_feather_nrf9151_ns.{conf,overlay}` — auto-included
-  board files; where the Feather defaults live (uart0 as AT UART, nPM1300,
-  CR termination, ...). Fine for local experiments, but note the checkout in
-  `dev.tmp/` is disposable.
+- `app/boards/circuitdojo_feather_nrf9151_ns.{conf,overlay}` — included board
+  files with Feather defaults (uart0 as AT UART, nPM1300, CR termination).
 - For changes worth keeping, put a `.conf` (Kconfig) or `.overlay` (devicetree)
-  file **here in `cell_modem/`**, check it in, and pass it at build time (absolute
-  path, since builds run from the app dir):
+  file **here in `cell_modem/`**, check it in, and pass it at build time
+  (absolute path; builds run from the app dir):
 
   ```bash
-  EXTRA_DTC_OVERLAY_FILE=$PWD/cell_modem/my-pins.overlay cell_modem/ncs.sh west build -p
-  EXTRA_CONF_FILE=$PWD/cell_modem/my-tweaks.conf cell_modem/ncs.sh west build -p
+  EXTRA_DTC_OVERLAY_FILE=$PWD/cell_modem/my-pins.overlay west build -p
+  EXTRA_CONF_FILE=$PWD/cell_modem/my-tweaks.conf west build -p
   ```
 
   Use the `EXTRA_*` forms (not `CONF_FILE`/`DTC_OVERLAY_FILE`, which *replace*
@@ -127,13 +112,14 @@ overlay needed).
 
 ## Pinned versions
 
-`cell_modem/setup.py` pins a specific commit of the fork, plus the NCS toolchain
-bundle version to build it with (`NCS_VERSION`, duplicated in `ncs.sh`). The
-fork's `west.yml` pins the NCS tree itself, nowadays to a bare SHA rather than a
-tag — resolve it against `dev.tmp/ncs/workspace/nrf` (`git describe --tags <sha>`) to
-find which toolchain bundle to ask for. As of the current pin that's
-`v3.4.0-rc1-87-g1c36e48027`, hence toolchain `v3.4.0`.
+- `cell_modem/setup.py` pins a commit of the `ncs-serial-modem` fork,
+  plus the NCS toolchain bundle version (`$NCS_VERSION`)
+- the fork's `west.yml` pins an NCS tree (`dev.tmp/ncs/workspace/nrf`) commit
+- eg. for `v3.4.0-rc1-87-g1c36e48027` we use toolchain `v3.4.0`.
 
-To upgrade: bump the constants, rerun `cell_modem/setup.py`, and do a
-pristine build. A toolchain bump means a fresh ~6 GB download; the old bundle
-stays in `dev.tmp/ncs/toolchains/` until you delete it.
+To upgrade
+
+- bump the constants in `cell_modem/setup.py`
+- re-run `cell_modem/setup.py`
+- do a pristine build: `west build -p` (in the app dir)
+- (optional) clean up old versions in `dev.tmp/ncs/toolchains/`

@@ -46,6 +46,7 @@ dependencies = [
     { name = "pint" },
     { name = "pyserial" },
     { name = "python-debian" },
+    { name = "tomli-w" },
 ]
 
 [package.metadata]
@@ -53,11 +54,12 @@ requires-dist = [
     { name = "exif", specifier = ">=1.6.1" },
     { name = "ok-logging-setup", specifier = ">=0.2" },
     { name = "ok-serial", extras = ["cli"], specifier = ">=0.3" },
-    { name = "ok-subprocess-runner", specifier = ">=0.4" },
+    { name = "ok-subprocess-runner", specifier = ">=0.5" },
     { name = "paho-mqtt", specifier = "~=2.1" },
     { name = "pint", specifier = "~=0.24" },
     { name = "pyserial", specifier = "~=3.5" },
     { name = "python-debian", specifier = ">=1.0.1" },
+    { name = "tomli-w", specifier = ">=1.2.0" },
 ]
 
 [[package]]
@@ -206,11 +208,11 @@ cli = [
 
 [[package]]
 name = "ok-subprocess-runner"
-version = "0.4"
+version = "0.5"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/53/07/6fe71c4516138c9f7e65245316dc8cc3fb2f3742472ac3d5cde8c09e959a/ok_subprocess_runner-0.4.tar.gz", hash = "sha256:858c373b61a6c4d8432dd6515c57a546839f40b55638d8abc0b49d9eceb6da27", size = 3869, upload-time = "2026-07-28T01:25:57.412Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/7f/7d/9dba442ccecbf34f1ac53acb3ed840e235ff6fcfde4f52c3f0f60faae1d2/ok_subprocess_runner-0.5.tar.gz", hash = "sha256:ac13323d5d948c11d56226da1f2df37c604eb0595a780ab18a81dccd552d642b", size = 3932, upload-time = "2026-08-03T19:40:36.128Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/79/bb/14fc1d5c9242b00cee8130bc89386d98ce872f7034a9dff8bd04b2ead160/ok_subprocess_runner-0.4-py3-none-any.whl", hash = "sha256:d59ed372c3c30fab1e9de8a9857eb0e8797ba8f2801b5b793b82bd89e597ee87", size = 4773, upload-time = "2026-07-28T01:25:56.466Z" },
+    { url = "https://files.pythonhosted.org/packages/41/c2/8dd61a3423561f9cb6b7b2c44b8cc3ace368972c0ad2fb09c742256a02e8/ok_subprocess_runner-0.5-py3-none-any.whl", hash = "sha256:2691519e2a88c8d4b08f31cb5367caedb4918652820a6c1b4c363a569adc41a2", size = 4836, upload-time = "2026-08-03T19:40:34.904Z" },
 ]
 
 [[package]]
@@ -274,6 +276,15 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/bf/4b/3c4cf635311b6203f17c2d693dc15e898969983dd3f729bee3c428aa60d4/python-debian-1.0.1.tar.gz", hash = "sha256:3ada9b83a3d671b58081782c0969cffa0102f6ce433fbbc7cf21275b8b5cc771", size = 127249, upload-time = "2025-03-11T12:27:27.245Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/ba/15/e8096189b18dda72e4923622abc10b021ecff723b397e22eff29fb86637b/python_debian-1.0.1-py3-none-any.whl", hash = "sha256:8f137c230c1d9279c2ac892b35915068b2aca090c9fd3da5671ff87af32af12c", size = 137453, upload-time = "2025-03-11T12:27:25.014Z" },
+]
+
+[[package]]
+name = "tomli-w"
+version = "1.2.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/19/75/241269d1da26b624c0d5e110e8149093c759b7a286138f4efd61a60e75fe/tomli_w-1.2.0.tar.gz", hash = "sha256:2dd14fac5a47c27be9cd4c976af5a12d87fb1f0b4512f81d69cce3b35ae25021", size = 7184, upload-time = "2025-01-15T12:07:24.262Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/c7/18/c86eb8e0202e32dd3df50d43d7ff9854f8e0603945ff398974c1d91ac1ef/tomli_w-1.2.0-py3-none-any.whl", hash = "sha256:188306098d013b691fcadc011abd66727d3c414c571bb01b1a174ba8c983cf90", size = 6675, upload-time = "2025-01-15T12:07:22.074Z" },
 ]
 
 [[package]]

@@ -14,19 +14,21 @@ url = "https://files.nordicsemi.com/artifactory/swtools/external/nrfutil/executa
 [settings]
 env_shell_expand = false
 experimental = true
+python.uv_venv_auto = "create|source"
 
 [env]
 # python & uv
-_.python.venv = { path = "dev.tmp/python_venv", create = true }
-
-# Nordic tools
-_.path = { path = "{{config_root}}/dev.tmp/ncs/bin" }
+PYTHONNOUSERSITE = "1"
 UV_PROJECT_ENVIRONMENT = "{{config_root}}/dev.tmp/python_venv"
 
 # Arduino
 ARDUINO_DIRECTORIES_DATA = "{{config_root}}/dev.tmp/arduino"
 ARDUINO_LIBRARY_ENABLE_UNSAFE_INSTALL = "true"
+
+# Nordic tools
+_.path = { path = "{{config_root}}/dev.tmp/ncs/bin" }
 NRFUTIL_HOME = "{{config_root}}/dev.tmp/ncs"
+PROBE_RUN_CHIP = "nRF9151_xxAA"
 
 [vars]
 uf2_dir = "/media/{{env.USER}}/RPI-RP2"
