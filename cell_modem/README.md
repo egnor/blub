@@ -83,7 +83,7 @@ with an RTT logging fragment and read logs with `probe-rs attach`:
 
 ```bash
 printf 'CONFIG_USE_SEGGER_RTT=y\nCONFIG_LOG_BACKEND_RTT=y\n' > /tmp/rtt.conf
-cell_modem/ncs.sh west build -p -- -DEXTRA_CONF_FILE=/tmp/rtt.conf
+west build -p -- -DEXTRA_CONF_FILE=/tmp/rtt.conf
 ```
 
 ## Tweaking configuration (pinouts etc.)
