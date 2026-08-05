@@ -1,10 +1,8 @@
 #!/usr/bin/env python3
 """
 Idempotently builds an nRF Connect SDK (NCS) west workspace under dev.tmp/ncs/
-for building Nordic's Serial Modem firmware for the Circuit Dojo nRF9151
-Feather. See README.md next to this script for everyday usage.
-
-Safe to rerun: completed steps are quick no-ops.
+for building Nordic Serial Modem firmware for the Circuit Dojo nRF9151 Feather.
+See README.md next to this script for everyday usage.
 """
 
 import argparse
