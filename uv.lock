@@ -3,44 +3,14 @@ revision = 3
 requires-python = ">=3.12"
 
 [[package]]
-name = "ansicon"
-version = "1.89.0"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/b6/e2/1c866404ddbd280efedff4a9f15abfe943cb83cde6e895022370f3a61f85/ansicon-1.89.0.tar.gz", hash = "sha256:e4d039def5768a47e4afec8e89e83ec3ae5a26bf00ad851f914d1240b444d2b1", size = 67312, upload-time = "2019-04-29T20:23:57.314Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/75/f9/f1c10e223c7b56a38109a3f2eb4e7fe9a757ea3ed3a166754fb30f65e466/ansicon-1.89.0-py2.py3-none-any.whl", hash = "sha256:f1def52d17f65c2c9682cf8370c03f541f410c1752d6a14029f97318e4b9dfec", size = 63675, upload-time = "2019-04-29T20:23:53.83Z" },
-]
-
-[[package]]
-name = "beartype"
-version = "0.22.9"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/c7/94/1009e248bbfbab11397abca7193bea6626806be9a327d399810d523a07cb/beartype-0.22.9.tar.gz", hash = "sha256:8f82b54aa723a2848a56008d18875f91c1db02c32ef6a62319a002e3e25a975f", size = 1608866, upload-time = "2025-12-13T06:50:30.72Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/71/cc/18245721fa7747065ab478316c7fea7c74777d07f37ae60db2e84f8172e8/beartype-0.22.9-py3-none-any.whl", hash = "sha256:d16c9bbc61ea14637596c5f6fbff2ee99cbe3573e46a716401734ef50c3060c2", size = 1333658, upload-time = "2025-12-13T06:50:28.266Z" },
-]
-
-[[package]]
-name = "blessed"
-version = "1.44.0"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "jinxed" },
-    { name = "wcwidth" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/7b/73/445c4ef32565d2f5af49f18c4163a32850c9328774ee0af74ed081d4ba15/blessed-1.44.0.tar.gz", hash = "sha256:d3b5037f0143eb7c80b2000be5bcdf86161af68aed231b91deadbce4e7379785", size = 14031337, upload-time = "2026-05-24T02:06:30.832Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/7e/c3/e8effb323af40a5d8e85ab557da2f0475f12a31f3266f28d91d0bf406963/blessed-1.44.0-py3-none-any.whl", hash = "sha256:e1d2ed93d3d90d0a1494a8b134d188c83fb89ae25590af638b921e8c1c8fa223", size = 130232, upload-time = "2026-05-24T02:06:26.458Z" },
-]
-
-[[package]]
 name = "blub"
 version = "0.1"
 source = { virtual = "." }
 dependencies = [
     { name = "exif" },
     { name = "ok-logging-setup" },
-    { name = "ok-serial", extra = ["cli"] },
+    { name = "ok-serial" },
+    { name = "ok-serial-terminal" },
     { name = "ok-subprocess-runner" },
     { name = "paho-mqtt" },
     { name = "pint" },
@@ -51,10 +21,11 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
-    { name = "exif", specifier = ">=1.6.1" },
-    { name = "ok-logging-setup", specifier = ">=0.2" },
-    { name = "ok-serial", extras = ["cli"], specifier = ">=0.3" },
-    { name = "ok-subprocess-runner", specifier = ">=0.5" },
+    { name = "exif", specifier = "~=1.6.1" },
+    { name = "ok-logging-setup", specifier = "~=0.2" },
+    { name = "ok-serial", specifier = "~=0.6" },
+    { name = "ok-serial-terminal", specifier = "~=0.2" },
+    { name = "ok-subprocess-runner", specifier = "~=0.5" },
     { name = "paho-mqtt", specifier = "~=2.1" },
     { name = "pint", specifier = "~=0.24" },
     { name = "pyserial", specifier = "~=3.5" },
@@ -155,18 +126,6 @@ wheels = [
 ]
 
 [[package]]
-name = "jinxed"
-version = "2.0.4"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "ansicon", marker = "sys_platform == 'win32'" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/3c/5e/2eea62fd64689685b082f29e1dcd0e57a19009c90733318a4bc9ddb54b2c/jinxed-2.0.4.tar.gz", hash = "sha256:a92ac48923433c0a88577bb0479191788813fd5055ef17ff2b04a701a1b83f19", size = 135991, upload-time = "2026-05-23T16:30:58.304Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/a2/b8/fe4e07cffa35c13fb8c7d21062082f27c89663f3009ec7d0c9b6908faa10/jinxed-2.0.4-py2.py3-none-any.whl", hash = "sha256:58ae0a4a2930b51e9de162208c356b382f5e25b3bc0ad73e2013b02a62d84e8b", size = 96427, upload-time = "2026-05-23T16:30:57.229Z" },
-]
-
-[[package]]
 name = "natsort"
 version = "8.4.0"
 source = { registry = "https://pypi.org/simple" }
@@ -177,33 +136,41 @@ wheels = [
 
 [[package]]
 name = "ok-logging-setup"
-version = "0.12"
+version = "0.17"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/81/a2/780771d7d24a99b7ea384d87f6076579fe34271f7f021019b1cfe33df986/ok_logging_setup-0.12.tar.gz", hash = "sha256:3cd98e7476bafcd659f0bc8f59916326c25f731b8b88d9e352190d83e66d2402", size = 7287, upload-time = "2025-12-17T06:31:15.454Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/74/93/32c4ad08e8cf45df938c6b5072bd369af90904c93b07ae98953c9fbb0f69/ok_logging_setup-0.17.tar.gz", hash = "sha256:720fd06de9abb1954f3eb9608416e7618f2144635f0c7f0c814334f1623998b2", size = 8405, upload-time = "2026-06-05T16:12:51.268Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/1a/40/920572dc260b1169862aab6adbf09b6e783e03c5f5ab72cae1f7fc48f292/ok_logging_setup-0.12-py3-none-any.whl", hash = "sha256:0753f3ab3aa7ca3deedaffd3aa01620503cbe330225656073b2dee8b9ac0b195", size = 9429, upload-time = "2025-12-17T06:31:14.258Z" },
+    { url = "https://files.pythonhosted.org/packages/0f/89/6b49ff7acc19272702fef5dddf80e8a68ec163743e4ca65ae6e5ce38874b/ok_logging_setup-0.17-py3-none-any.whl", hash = "sha256:4e6ebf438b25bfb13f78ff6f70cb93767df37225d69f15b7b45f739fec7e17f5", size = 10415, upload-time = "2026-06-05T16:12:50.105Z" },
 ]
 
 [[package]]
 name = "ok-serial"
-version = "0.3.1"
+version = "0.6"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "beartype" },
+    { name = "click" },
     { name = "natsort" },
+    { name = "ok-logging-setup" },
     { name = "pyserial" },
     { name = "types-pyserial" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/1a/44/3c6a07517e547feb2bd30cb2ab5b5cfb9c46691ec67ca31f0aa492be9b1c/ok_serial-0.3.1.tar.gz", hash = "sha256:c4610e9292c653ccf6850c2cd864339b84be6c4bb5ca96e561c69dfc633e3c93", size = 18880, upload-time = "2026-04-11T00:09:11.483Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/e6/54/6e41c8ed34bdb98a6af2c171429607cc4efd69046b762737540f4ab8a00c/ok_serial-0.6.tar.gz", hash = "sha256:350c2ec20e1c37e3273e585fc7eb8d88d193e30486fa7180c44cdebc95bee84a", size = 20453, upload-time = "2026-08-05T05:45:32.784Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/5c/3c/f7b82508c513ff146afc049615cd7ee02ca589de55fd732d41f0c770a233/ok_serial-0.3.1-py3-none-any.whl", hash = "sha256:6ce90d54e4c442f2d036354ff57ec2335567b5f9bc01e02b23a87aa57ca15d52", size = 23079, upload-time = "2026-04-11T00:09:10.074Z" },
+    { url = "https://files.pythonhosted.org/packages/6f/db/6de88ef993916bfee62162601579a430a64c4e70d97d584a5c10b5383e6d/ok_serial-0.6-py3-none-any.whl", hash = "sha256:6b7eb3dcf6427be79b67f6ae5f7d811c5729c9c03e24563dfc724e641b41aff6", size = 24396, upload-time = "2026-08-05T05:45:33.698Z" },
 ]
 
-[package.optional-dependencies]
-cli = [
-    { name = "blessed" },
+[[package]]
+name = "ok-serial-terminal"
+version = "0.2"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
     { name = "click" },
     { name = "ok-logging-setup" },
+    { name = "ok-serial" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/fe/9c/79c27da33e9bfda19a4012069d2905fcf3774efa537094eb9a3afe0641e5/ok_serial_terminal-0.2.tar.gz", hash = "sha256:558cfa695b07cce431a3655f7c6e6a27c83128b8eff600cd97af5864c172a345", size = 21091, upload-time = "2026-08-05T05:48:02.786Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/8f/3b/64f3157ec62f20d069564ffc8b79c40f46eef80a383237c6d8bd853a30d4/ok_serial_terminal-0.2-py3-none-any.whl", hash = "sha256:9cad8d4cccdc50f030d7aceca98e9c4bd4896735058836b071244ead1198832b", size = 24307, upload-time = "2026-08-05T05:48:01.754Z" },
 ]
 
 [[package]]
@@ -303,13 +270,4 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/f6/37/23083fcd6e35492953e8d2aaaa68b860eb422b34627b13f2ce3eb6106061/typing_extensions-4.13.2.tar.gz", hash = "sha256:e6c81219bd689f51865d9e372991c540bda33a0379d5573cddb9a3a23f7caaef", size = 106967, upload-time = "2025-04-10T14:19:05.416Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/8b/54/b1ae86c0973cc6f0210b53d508ca3641fb6d0c56823f288d108bc7ab3cc8/typing_extensions-4.13.2-py3-none-any.whl", hash = "sha256:a439e7c04b49fec3e5d3e2beaa21755cadbbdc391694e28ccdd36ca4a1408f8c", size = 45806, upload-time = "2025-04-10T14:19:03.967Z" },
-]
-
-[[package]]
-name = "wcwidth"
-version = "0.8.0"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/af/44/c833e6b746ffb654e9abacf7ad6c2480a9c8c42e9637c1ae849964fb4dde/wcwidth-0.8.0.tar.gz", hash = "sha256:68a882ff6d14e3d14e0cae590b96a0551be64ce4905408112a8254434a1bdf69", size = 1305357, upload-time = "2026-06-05T21:19:35.667Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/fb/17/c68b6cbcfeadbf420b3c3edaf8fda51335bc9c38732adb2d3ba8984dc607/wcwidth-0.8.0-py3-none-any.whl", hash = "sha256:8c75e6099cefd197c4bcc67a486f70b5dbc68f997c05f34a811d853910450d64", size = 324935, upload-time = "2026-06-05T21:19:33.999Z" },
 ]

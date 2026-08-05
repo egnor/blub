@@ -8,10 +8,11 @@ requires-python = ">=3.12"
 
 # Dependencies needed at runtime
 dependencies = [
-  "exif>=1.6.1",
-  "ok-logging-setup>=0.2",
-  "ok-serial[cli]>=0.3",
-  "ok-subprocess-runner>=0.5",
+  "exif~=1.6.1",
+  "ok-logging-setup~=0.2",
+  "ok-serial~=0.6",
+  "ok-subprocess-runner~=0.5",
+  "ok-serial-terminal~=0.2",
   "paho-mqtt~=2.1",
   "pint~=0.24",
   "pyserial~=3.5",
