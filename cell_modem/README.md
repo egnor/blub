@@ -35,30 +35,40 @@ in the workspace (generated from `nrfutil sdk-manager toolchain env`).
 
 ## Flashing details
 
-The `west flash` alias does an app-only update. To reprogram from scratch:
+Running `west flash` does an app-only update. To fully reprogram from scratch:
 
 ```sh
 cd dev.tmp/ncs/workspace/circuitdojo-ncs-serial-modem/app
 west build  # if not already built
-# download the firmware image, this will perform a full chip erase
-probe-rs download --binary-format hex --allow-erase-all build/merged.hex
-# prevent the chip from locking out debug access on next boot
-probe-rs download --binary-format hex $TOP/cell_modem/uicr-approtect-unlock.hex
+# force a full chip-wide ERASEALL, the only way to clear the UICR
+probe-rs erase --allow-erase-all
+# prevent the chip from locking out debug access on next boot (the default)
+probe-rs download --binary-format=hex ../../../../../cell_modem/uicr-approtect-unlock.hex
+# download bootloader+app (does sector-by-sector erase; ok for app but not UICR)
+probe-rs download --allow-erase-all --binary-format=hex build/merged.hex
 # reset to run the app
 probe-rs reset
 ```
 
-To probe the running board: (note, only one `probe-rs` can run at a time)
+Avoid `west flash --erase`, it erases all of flash but only programs the app
+(because our `west flash` alias adds `--domain app`) leaving no bootloader.
+
+## Talking to the board
+
+To get logs from the board: (note, only one `probe-rs` can run at a time)
 
 ```sh
 cd dev.tmp/ncs/workspace/circuitdojo-ncs-serial-modem/app
-probe-rs reset  # reset the target
 probe-rs attach build/app/zephyr/zephyr.elf  # print RTT logs
 ```
 
-Smoke test: `AT` → `OK`, `AT+CGMM` → `nRF9151-LACA`, `AT#XSMVER` → the Serial
-Modem version. The radio is off at boot (`AT+CFUN?` → `0`); `AT+CFUN=1` brings
-it up once a SIM and antenna are connected.
+When connected to the Feather TX/RX at 115200 baud (by default),
+it should respond to AT commands:
+
+- `AT` + CR -> `OK`
+- `AT+CGMM` + CR -> `nRF9151-LACA`
+- `AT#XSMVER` + CR -> the Serial Modem version.
+- `AT+CFUN=1` + CR -> brings up the radio (needs SIM and antenna)
 
 ## Hardware configuration notes
 
