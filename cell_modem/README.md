@@ -14,44 +14,70 @@ Scripts to build Nordic's [Serial Modem][sm] AT-command firmware for the
 
 ## Building
 
-Make sure `mise` is activated (or run commands with `mise exec -- ...`), then
+Set up the Nordic SDK and build cell modem firmware (slow the first time):
 
-```bash
-cell_modem/setup.py  # download tools, prepare build
-cd dev.tmp/ncs/workspace/circuitdojo-ncs-serial-modem/app  # main app source
-west build      # incremental build (add -p for pristine)
-west flash      # flash over USB (app only, see below)
+```sh
+mise run cell-modem-build
 ```
+
+To force a clean build, use `cell-modem-build-clean`. To REALLY start from
+scratch and download the SDK again, delete `dev.tmp/ncs` and re-build.
 
 Paths of note:
 
+- `mise.toml` - sets environment variables & defines build tasks
 - `dev.tmp/ncs` (`$NRFUTIL_HOME`) - root of everything cell-modem related
 - `dev.tmp/ncs/workspace` - `west` (Zephyr build tool) working tree
+- `dev.tmp/ncs/workspace/mise.local.toml` - SDK environment (see setup.py)
 - `dev.tmp/ncs/workspace/circuitdojo-ncs-serial-modem` - app checkout
 - `dev.tmp/ncs/workspace/circuitdojo-ncs-serial-modem/app` - main app source
 
-Environment settings come from top-level `mise.toml` and also `mise.local.toml`
-in the workspace (generated from `nrfutil sdk-manager toolchain env`).
-
-## Flashing details
-
-Running `west flash` does an app-only update. To fully reprogram from scratch:
+To noodle around in the Nordic SDK environment:
 
 ```sh
 cd dev.tmp/ncs/workspace/circuitdojo-ncs-serial-modem/app
-west build  # if not already built
-# force a full chip-wide ERASEALL, the only way to clear the UICR
-probe-rs erase --allow-erase-all
-# prevent the chip from locking out debug access on next boot (the default)
-probe-rs download --binary-format=hex ../../../../../cell_modem/uicr-approtect-unlock.hex
-# download bootloader+app (does sector-by-sector erase; ok for app but not UICR)
-probe-rs download --allow-erase-all --binary-format=hex build/merged.hex
-# reset to run the app
-probe-rs reset
+west build  # etc.
 ```
 
-Avoid `west flash --erase`, it erases all of flash but only programs the app
-(because our `west flash` alias adds `--domain app`) leaving no bootloader.
+## Flashing
+
+Flash the entire chip, including bootloader and UICR config:
+
+```sh
+mise run cell-modem-flash-all
+```
+
+To re-flash the app slot only, use `cell-modem-flash-app`, or you can use
+the Nordic SDK:
+
+```sh
+cd dev.tmp/ncs/workspace/circuitdojo-ncs-serial-modem/app
+west flash --runner=probe-rs --domain=app
+```
+
+Important notes about using `probe-rs` or `west flash` directly:
+
+- We must use [`probe-rs`](https://probe.rs/) to use
+  the onboard RP2040 CMSIS-DAP USB programming/debugging interface.
+  (`pyOCD` doesn't support nRF91xx UICR programming, and
+  `nrfjprog`/`nrfutil device`
+  [doesn't support CMSIS-DAP](https://devzone.nordicsemi.com/f/nordic-q-a/103446/raspberry-pi-debug-probe-cmsis-dap-support-in-nrfutil).)
+- The [nRF91xx User Information Configuration Register (UICR) block](https://docs.nordicsemi.com/r/bundle/ps_nrf9151/page/uicr.html)
+  can only be erased by chipwide ERASEALL (`probe-rs erase --allow-erase-all`);
+  then, each UICR word can be programmed only once from an erased state.
+- Note, `probe-rs download --chip-erase ...` does NOT use ERASEALL, only
+  sector-wise erase which does NOT erase the UICR.
+- The serial modem whole-flash image (`merged.hex`) includes UICR data, so
+  reflashing needs ERASEALL first (which `mise run cell-modem-flash-all` does).
+- The app-slot-only image (`zephyr.hex`) does NOT include UICR data, so it
+  can be reflashed without ERASEALL (normal sector-wise erase is fine).
+- So, naive `west flash` (without `--domain=app` or a prior ERASEALL) can fail
+  writing `app_provision.hex` which includes UICR data.
+- Furthermore, default UICR settings (after ERASEALL) lock out debug access
+  after the current debug session expires (requiring ERASEALL to recover), so
+  `mise run cell-modem-flash-all` flashes `cell_modem/uicr-approtect-unlock.hex`
+  immediately after erasing to enable debug access. (Fortunately those
+  registers do not overlap with `merged.hex`.)
 
 ## Talking to the board
 

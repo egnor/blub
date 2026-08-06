@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Idempotently builds an nRF Connect SDK (NCS) west workspace under dev.tmp/ncs/
-for building Nordic Serial Modem firmware for the Circuit Dojo nRF9151 Feather.
+(Re)builds an nRF Connect SDK (NCS) environment under dev.tmp/nordic/ for
+building Nordic Serial Modem firmware for the Circuit Dojo nRF9151 Feather.
 See README.md next to this script for everyday usage.
 """
 
@@ -76,19 +76,9 @@ def main():
         run_with_toolchain("west", "init", "-l", app_dir.name)
     build_board = "circuitdojo_feather_nrf9151/nrf9151/ns"
     run_with_toolchain("west", "config", "build.board", build_board)
-    # `west flash` = reflash the app image with probe-rs (see README.md);
-    # the default pyocd runner can't program UICR, and the non-app domains
-    # (b0, mcuboot, provisioning) only flash onto an erased chip anyway
-    flash_alias = "flash --runner probe-rs --domain app"
-    run_with_toolchain("west", "config", "alias.flash", flash_alias)
     run_with_toolchain("west", "update")
 
-    logging.info(f"""
-✅ NCS workspace ready in {ncs_dir}
-Next steps (see cell_modem/README.md):
-  cd {app_dir}/app
-  west build   # build Serial Modem for the nRF9151 Feather
-  west flash   # flash it over USB (probe-rs / CMSIS-DAP)""")
+    logging.info("\n✅ NCS workspace ready in {ncs_dir}")
 
 
 if __name__ == "__main__":

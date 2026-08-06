@@ -26,8 +26,8 @@ ARDUINO_DIRECTORIES_DATA = "{{config_root}}/dev.tmp/arduino"
 ARDUINO_LIBRARY_ENABLE_UNSAFE_INSTALL = "true"
 
 # Nordic tools
-_.path = { path = "{{config_root}}/dev.tmp/ncs/bin" }
-NRFUTIL_HOME = "{{config_root}}/dev.tmp/ncs"
+_.path = { path = "{{config_root}}/dev.tmp/nordic/bin" }
+NRFUTIL_HOME = "{{config_root}}/dev.tmp/nordic"
 PROBE_RS_CHIP = "nRF9151_xxAA"
 
 # Default cell modem build fragments: AT on header uart1, logs to RTT
@@ -35,33 +35,78 @@ PROBE_RS_CHIP = "nRF9151_xxAA"
 EXTRA_DTC_OVERLAY_FILE = "{{config_root}}/cell_modem/at-header-uart.overlay"
 EXTRA_CONF_FILE = "{{config_root}}/cell_modem/rtt-logs.conf"
 
-[vars]
-uf2_dir = "/media/{{env.USER}}/RPI-RP2"
-port_arg = "$(okserial -l1 RP2040 || ls -d {{vars.uf2_dir|quote}})"
-
-[tasks]
-cu = { depends = ["c", "u"] }
-um = { depends = ["u", "m"] }
-cum = { depends = ["c", "um"] }
-
-[tasks.c]
-run = "arduino-cli compile"
-dir = "{{cwd}}"
-
-[tasks.u]
-run = 'port={{vars.port_arg}} && arduino-cli upload --port="$port"'
-dir = "{{cwd}}"
-wait_for = "c"
-
-[tasks.m]
-run = 'port={{vars.port_arg}} && arduino-cli monitor --port="$port"'
-dir = "{{cwd}}"
-wait_for = "u"
-raw = true
-
 [hooks]
 postinstall = """
 git lfs install --local
 git lfs pull
 uv sync
 """
+
+[tasks]
+arduino-cu = { alias = "cu", description = "c + u", depends = ["c", "u"] }
+arduino-um = { alias = "um", description = "u + m", depends = ["u", "m"] }
+arduino-cum = { alias = "cum", description = "c + um", depends = ["c", "um"] }
+
+[tasks.arduino-c]
+alias = "c"
+description = "Compile Arduino sketch"
+run = "arduino-cli compile"
+dir = "{{cwd}}"
+
+[tasks.arduino-u]
+alias = "u"
+description = "Upload Arduino sketch"
+run = 'port={{vars.port_arg|quote}} && arduino-cli upload --port="$port"'
+dir = "{{cwd}}"
+wait_for = "c"
+
+[tasks.arduino-m]
+alias = "m"
+description = "Monitor Arduino sketch"
+run = 'port={{vars.port_arg|quote}} && arduino-cli monitor --port="$port"'
+dir = "{{cwd}}"
+wait_for = "u"
+raw = true
+
+[tasks.cell-modem-setup]
+description = "Prepare Nordic cell modem build environment"
+run = "cell_modem/setup.py"
+
+[tasks.cell-modem-build]
+description = "Incremental Nordic cell modem app build"
+depends = "cell-modem-setup"
+dir = "{{vars.cell_modem_app_dir}}"
+run = "mise x -- west build"
+
+[tasks.cell-modem-build-clean]
+description = "Full Nordic cell modem app build"
+depends_post = "cell-modem-build"
+run = "rm -rf {{vars.cell_modem_app_dir|quote}}/build/"
+
+[tasks.cell-modem-flash-erase]
+description = "Erase and unlock entire Nordic cell modem chip"
+run = [
+  "probe-rs erase --allow-erase-all",
+  "probe-rs download --binary-format=hex {{config_root|quote}}/cell_modem/uicr-approtect-unlock.hex",
+]
+
+[tasks.cell-modem-flash-all]
+description = "Flash entire Nordic cell modem chip"
+depends = ["cell-modem-build", "cell-modem-flash-erase"]
+depends_post = "cell-modem-reset"
+run = "probe-rs download --allow-erase-all --binary-format=hex {{vars.cell_modem_app_dir|quote}}/build/merged.hex"
+
+[tasks.cell-modem-flash-app]
+description = "Flash Nordic cell modem app slot"
+depends = "cell-modem-build"
+depends_post = "cell-modem-reset"
+run = "probe-rs download --binary-format=hex {{vars.cell_modem_app_dir|quote}}/build/app/zephyr/zephyr.signed.hex"
+
+[tasks.cell-modem-reset]
+description = "Reset Nordic cell modem chip"
+run = "probe-rs reset"
+
+[vars]
+cell_modem_app_dir = "dev.tmp/nordic/workspace/circuitdojo-ncs-serial-modem/app"
+uf2_dir = "/media/{{env.USER}}/RPI-RP2"
+port_arg = "$(okserial -l1 RP2040 || ls -d {{vars.uf2_dir|quote}})"
