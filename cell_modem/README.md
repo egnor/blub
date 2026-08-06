@@ -1,4 +1,4 @@
-# nRF9151 Feather — Serial Modem firmware build tools
+# nRF9151 Feather serial modem firmware build tools
 
 Scripts to build Nordic's [Serial Modem][sm] AT-command firmware for the
 [Circuit Dojo nRF9151 Feather][feather], using [Circuit Dojo's fork][fork] of
@@ -14,14 +14,27 @@ Scripts to build Nordic's [Serial Modem][sm] AT-command firmware for the
 
 ## Building
 
-Set up the Nordic SDK and build cell modem firmware (slow the first time):
+To set up the Nordic SDK and build cell modem firmware (slow the first time):
 
 ```sh
 mise run cell-modem-build
 ```
 
-To force a clean build, use `cell-modem-build-clean`. To REALLY start from
+To force a clean build:
+
+```sh
+cell-modem-build-clean
+```
+
+To REALLY start from
 scratch and download the SDK again, delete `dev.tmp/ncs` and re-build.
+
+To noodle around in the Nordic SDK environment:
+
+```sh
+cd dev.tmp/ncs/workspace/circuitdojo-ncs-serial-modem/app
+west build  # etc.
+```
 
 Paths of note:
 
@@ -32,27 +45,26 @@ Paths of note:
 - `dev.tmp/ncs/workspace/circuitdojo-ncs-serial-modem` - app checkout
 - `dev.tmp/ncs/workspace/circuitdojo-ncs-serial-modem/app` - main app source
 
-To noodle around in the Nordic SDK environment:
-
-```sh
-cd dev.tmp/ncs/workspace/circuitdojo-ncs-serial-modem/app
-west build  # etc.
-```
-
 ## Flashing
 
-Flash the entire chip, including bootloader and UICR config:
+To (re)flash the entire chip, including bootloader and user registers (UICR):
 
 ```sh
 mise run cell-modem-flash-all
 ```
 
-To re-flash the app slot only, use `cell-modem-flash-app`, or you can use
-the Nordic SDK:
+To re-flash the app slot only:
+
+```
+mise run cell-modem-flash-app
+```
+
+Or, you can flash the app slot with the Nordic SDK:
 
 ```sh
 cd dev.tmp/ncs/workspace/circuitdojo-ncs-serial-modem/app
 west flash --runner=probe-rs --domain=app
+# WARNING - do not attempt whole-chip flash this way - see below
 ```
 
 Important notes about using `probe-rs` or `west flash` directly:
@@ -65,17 +77,17 @@ Important notes about using `probe-rs` or `west flash` directly:
 - The [nRF91xx User Information Configuration Register (UICR) block](https://docs.nordicsemi.com/r/bundle/ps_nrf9151/page/uicr.html)
   can only be erased by chipwide ERASEALL (`probe-rs erase --allow-erase-all`);
   then, each UICR word can be programmed only once from an erased state.
-- Note, `probe-rs download --chip-erase ...` does NOT use ERASEALL, only
-  sector-wise erase which does NOT erase the UICR.
+- (Beware, `probe-rs download --chip-erase ...` does NOT use ERASEALL, only
+  sector-wise erase which does NOT erase the UICR.)
 - The serial modem whole-flash image (`merged.hex`) includes UICR data, so
-  reflashing needs ERASEALL first (which `mise run cell-modem-flash-all` does).
+  reflashing needs ERASEALL first, which `mise run cell-modem-flash-all` does.
 - The app-slot-only image (`zephyr.hex`) does NOT include UICR data, so it
   can be reflashed without ERASEALL (normal sector-wise erase is fine).
 - So, naive `west flash` (without `--domain=app` or a prior ERASEALL) can fail
-  writing `app_provision.hex` which includes UICR data.
-- Furthermore, default UICR settings (after ERASEALL) lock out debug access
-  after the current debug session expires (requiring ERASEALL to recover), so
-  `mise run cell-modem-flash-all` flashes `cell_modem/uicr-approtect-unlock.hex`
+  attempting to re-write UICR data even if it didn't change.
+- Furthermore, after ERASEALL, default UICR settings lock out debug access once
+  the debug session expires (requiring ERASEALL to recover), so
+  `mise run cell-modem-flash-all` writes `cell_modem/uicr-approtect-unlock.hex`
   immediately after erasing to enable debug access. (Fortunately those
   registers do not overlap with `merged.hex`.)
 
