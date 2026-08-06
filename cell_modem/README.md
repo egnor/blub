@@ -108,36 +108,35 @@ it should respond to AT commands:
 - `AT#XSMVER` + CR -> the Serial Modem version.
 - `AT+CFUN=1` + CR -> brings up the radio (needs SIM and antenna)
 
-## Hardware configuration notes
+## Hardware configuration
 
-The app builds with Circuit Dojo's sysbuild config: NSIB (`b0`) + MCUboot
-bootloaders, with `b0`'s provisioning data (key hashes etc.) in the nRF91 UICR
-at `0xFF8000`. `pyOCD` can't write the UICR, so we use `probe-rs` to flash.
+The firmware builds with Circuit Dojo's config:
 
-The stock firmware looks for AT commands on uart0 which is connected to the
-RP2040 USB interface. We add `cell_modem/at-header-uart.overlay` to the device
-tree, rerouting the AT command interface to uart1 (connected to Feather RX/TX).
+- [NSIB (aka `b0`)](https://nrfconnectdocs.nordicsemi.com/ncs/latest/nrf/samples/bootloader/README.html)
+\+ [MCUboot](https://docs.mcuboot.com/) bootloaders
+- NSIB's provisioning data (key hashes etc.) in the nRF91 UICR at `0xFF8000`
 
-The stock firmware also writes logs to uart0. We add `cell_modem/rtt-logs.conf`
-Zephyr configuration to route logs to RTT via debug probe so they can be
-read over USB through the onboard RP2040 (see above).
+Our build applies some tweaks:
+
+- `cell_modem/at-header-uart.overlay` - reroute AT command interface to uart1 (Feather RX/TX), not uart0 (USB via RP2040)
+- `cell_modem/rtt-logs.conf` - route logs to RTT via debug probe, not uart0
 
 The project `mise.toml` sets `$EXTRA_DTC_OVERLAY_FILE` and `$EXTRA_CONF_FILE`
 to enable these tweaks. Reset these variables to build without the tweaks,
 or install different tweaks.
 
-## Pinned versions
+## Version pinning
 
-- `cell_modem/setup.py` pins a commit of the `ncs-serial-modem` fork,
-  plus the NCS toolchain bundle version (`$NCS_VERSION`)
-- the serial modem fork's `west.yml` pins the NCS code
-  (`dev.tmp/ncs/workspace/nrf`) to a commit
-- NCS and toolchain-bundle versions must match, eg. for
+- `cell_modem/setup.py` pins a commit of the `ncs-serial-modem` fork and
+  picks a Nordic toolchain bundle version (`$NCS_VERSION`)
+- `ncs-serial-modem` in turn pins NCS itself (`dev.tmp/ncs/workspace/nrf`)
+  via `west.yml`
+- NCS and toolchain versions must be compatible, eg. for NCS commit
   `v3.4.0-rc1-87-g1c36e48027` we use toolchain `v3.4.0`.
 
 To upgrade
 
+- inspect the NCS commit in `west.yml` and find the corresponding toolchain
 - bump the constants in `cell_modem/setup.py`
-- re-run `cell_modem/setup.py`
-- do a pristine build: `west build -p` (in the app dir)
-- (optional) clean up old versions in `dev.tmp/ncs/toolchains/`
+- run `mise run cell-modem-build-clean`
+- (optional) clean up old toolchains in `dev.tmp/nordic/toolchains/`
