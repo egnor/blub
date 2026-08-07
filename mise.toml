@@ -25,15 +25,10 @@ UV_PROJECT_ENVIRONMENT = "{{config_root}}/dev.tmp/python_venv"
 ARDUINO_DIRECTORIES_DATA = "{{config_root}}/dev.tmp/arduino"
 ARDUINO_LIBRARY_ENABLE_UNSAFE_INSTALL = "true"
 
-# Nordic tools
+# Nordic tools for cell modem build, see cell_modem/README.md
 _.path = { path = "{{config_root}}/dev.tmp/nordic/bin" }
 NRFUTIL_HOME = "{{config_root}}/dev.tmp/nordic"
 PROBE_RS_CHIP = "nRF9151_xxAA"
-
-# Default cell modem build fragments: AT on header uart1, logs to RTT
-# (see cell_modem/README.md; Zephyr reads these at pristine-build time)
-EXTRA_DTC_OVERLAY_FILE = "{{config_root}}/cell_modem/at-header-uart.overlay"
-EXTRA_CONF_FILE = "{{config_root}}/cell_modem/rtt-logs.conf"
 
 [hooks]
 postinstall = """
@@ -76,31 +71,37 @@ run = "cell_modem/setup.py"
 description = "Incremental Nordic cell modem app build"
 depends = "cell-modem-setup"
 dir = "{{vars.cell_modem_app_dir}}"
-run = "mise x -- west build"
-
-[tasks.cell-modem-build-clean]
-description = "Full Nordic cell modem app build"
-depends_post = "cell-modem-build"
-run = "rm -rf {{vars.cell_modem_app_dir|quote}}/build/"
-
-[tasks.cell-modem-flash-erase]
-description = "Erase and unlock entire Nordic cell modem chip"
 run = [
-  "probe-rs erase --allow-erase-all",
-  "probe-rs download --binary-format=hex {{config_root|quote}}/cell_modem/uicr-approtect-unlock.hex",
+  "mise x -- west build",
+  "mise x -- hexmerge.py build/merged.hex {{config_root|quote}}/cell_modem/uicr-approtect-unlock.hex -o build/merged-with-unlock.hex",
 ]
+wait_for = "cell-modem-clean"
+
+[tasks.cell-modem-clean]
+description = "Clean Nordic cell modem build cache"
+run = "rm -rf {{vars.cell_modem_app_dir|quote}}/build/"
 
 [tasks.cell-modem-flash-all]
 description = "Flash entire Nordic cell modem chip"
-depends = ["cell-modem-build", "cell-modem-flash-erase"]
+depends = ["cell-modem-build"]
 depends_post = "cell-modem-reset"
-run = "probe-rs download --allow-erase-all --binary-format=hex {{vars.cell_modem_app_dir|quote}}/build/merged.hex"
+run = [
+  "probe-rs erase --allow-erase-all",
+  "probe-rs download --binary-format=hex {{vars.cell_modem_app_dir|quote}}/build/merged-with-unlock.hex",
+]
 
 [tasks.cell-modem-flash-app]
 description = "Flash Nordic cell modem app slot"
 depends = "cell-modem-build"
 depends_post = "cell-modem-reset"
 run = "probe-rs download --binary-format=hex {{vars.cell_modem_app_dir|quote}}/build/app/zephyr/zephyr.signed.hex"
+
+[tasks.cell-modem-logs]
+description = "Print logs from Nordic cell modem chip"
+dir = "{{vars.cell_modem_app_dir}}"
+interactive = true
+run = "probe-rs attach build/app/zephyr/zephyr.elf"
+wait_for = ["cell-modem-reset"]
 
 [tasks.cell-modem-reset]
 description = "Reset Nordic cell modem chip"

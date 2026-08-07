@@ -9,9 +9,11 @@ import argparse
 import logging
 import ok_logging_setup
 import os
+import shlex
 import tomli_w
 from ok_subprocess_runner import run, stdout_text, stdout_json, SubprocessRunner
 from pathlib import Path
+from subprocess import CalledProcessError
 
 APP_REPO_URL = "https://github.com/circuitdojo/ncs-serial-modem"
 APP_REPO_REV = "6dc6a397836465fcff6b5d9de9b604e7f33bb753"
@@ -21,6 +23,7 @@ SDK_MANAGER_VERSION = "1.16.1"  # nrfutil plugin (nrfutil itself is unpinnable)
 
 def main():
     ok_logging_setup.install()
+    ok_logging_setup.skip_traceback_for(CalledProcessError)
     ok_logging_setup.skip_traceback_for(OSError)
     parser = argparse.ArgumentParser(description=__doc__)
     parser.parse_args()
@@ -67,18 +70,23 @@ def main():
         tomli_w.dump(mise_t, f)
     run("mise", "trust", cwd=workspace_dir)
 
-    launch_prefix = [
-        *("nrfutil", "sdk-manager", "toolchain", "launch"),
-        *(f"--ncs-version={NCS_VERSION}", f"--chdir={workspace_dir}", "--"),
-    ]
-    run_with_toolchain = SubprocessRunner(args_prefix=launch_prefix)
+    mise_prefix = ["mise", "-C", workspace_dir, "exec", "--"]
+    run_in_workspace = SubprocessRunner(args_prefix=mise_prefix)
     if not (workspace_dir / ".west").is_dir():
-        run_with_toolchain("west", "init", "-l", app_dir.name)
-    build_board = "circuitdojo_feather_nrf9151/nrf9151/ns"
-    run_with_toolchain("west", "config", "build.board", build_board)
-    run_with_toolchain("west", "update")
+        run_in_workspace("west", "init", "-l", app_dir.name)
 
-    logging.info("\n✅ NCS workspace ready in {ncs_dir}")
+    build_board = "circuitdojo_feather_nrf9151/nrf9151/ns"
+    run_in_workspace("west", "config", "build.board", build_board)
+
+    script_dir = Path(__file__).parent.resolve()
+    cmake_args = {
+        "EXTRA_DTC_OVERLAY_FILE": f"{script_dir}/blub_cell_modem.overlay",
+        "EXTRA_CONF_FILE": f"{script_dir}/blub_cell_modem.conf",
+    }
+    cmake_flags = shlex.join(f"-D{k}={v}" for k, v in cmake_args.items())
+    run_in_workspace("west", "config", "build.cmake-args", "--", cmake_flags)
+    run_in_workspace("west", "update")
+    logging.info(f"\n✅ NCS workspace ready in {ncs_dir}")
 
 
 if __name__ == "__main__":

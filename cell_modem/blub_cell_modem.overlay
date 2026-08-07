@@ -1,0 +1,11 @@
+/* Move the AT interface from uart0 (RP2040 USB) to uart1 (Feather TX/RX). */
+/ {
+	chosen {
+		ncs,sm-uart = &uart1;
+	};
+};
+
+&uart1 {
+	status = "okay";
+	current-speed = <115200>;
+};
