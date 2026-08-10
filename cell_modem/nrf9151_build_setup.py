@@ -80,8 +80,8 @@ def main():
 
     script_dir = Path(__file__).parent.resolve()
     cmake_args = {
-        "EXTRA_DTC_OVERLAY_FILE": f"{script_dir}/blub_cell_modem.overlay",
-        "EXTRA_CONF_FILE": f"{script_dir}/blub_cell_modem.conf",
+        "EXTRA_DTC_OVERLAY_FILE": f"{script_dir}/nrf9151_serial_modem.overlay",
+        "EXTRA_CONF_FILE": f"{script_dir}/nrf9151_serial_modem.conf",
     }
     cmake_flags = shlex.join(f"-D{k}={v}" for k, v in cmake_args.items())
     run_in_workspace("west", "config", "build.cmake-args", "--", cmake_flags)

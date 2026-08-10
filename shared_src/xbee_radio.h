@@ -3,8 +3,6 @@
 
 #pragma once
 
-#include <stdint.h>
-
 #include "xbee_api.h"
 
 namespace arduino { class HardwareSerial; }

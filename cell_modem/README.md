@@ -1,4 +1,4 @@
-# nRF9151 Feather serial modem firmware build tools
+# nRF9151 Feather serial modem firmware build & interface library
 
 Scripts to build Nordic's [Serial Modem][sm] AT-command firmware for the
 [Circuit Dojo nRF9151 Feather][feather], using [Circuit Dojo's fork][fork] of
@@ -41,7 +41,7 @@ Paths of note:
 - `mise.toml` - sets environment variables & defines build tasks
 - `dev.tmp/ncs` (`$NRFUTIL_HOME`) - root of everything cell-modem related
 - `dev.tmp/ncs/workspace` - `west` (Zephyr build tool) working tree
-- `dev.tmp/ncs/workspace/mise.local.toml` - SDK environment (see setup.py)
+- `dev.tmp/ncs/workspace/mise.local.toml` - SDK env (see nrf9151_build_setup.py)
 - `dev.tmp/ncs/workspace/circuitdojo-ncs-serial-modem` - app checkout
 - `dev.tmp/ncs/workspace/circuitdojo-ncs-serial-modem/app` - main app source
 
@@ -99,7 +99,7 @@ Heed these quirks if you run `probe-rs` or `west flash` directly:
 - Therefore, after ERASEALL, both bootloader/app AND the APPROTECT register
   must be flashed in one download operation, which
   `mise run cell-modem-flash-all` does by combining
-  `cell_modem/uicr-approtect-unlock.hex` with the merged image before flashing.
+  `cell_modem/nrf9151_unlock_debug.hex` with the merged image before flashing.
 
 Circuit Dojo has [advice for recovering](https://docs.circuitdojo.com/nrf9151-feather/device-recovery.html) the RP2040 debug probe and the nRF9151 itself:
 
@@ -133,8 +133,8 @@ The firmware builds with Circuit Dojo's config:
 
 Our build applies some tweaks:
 
-- `cell_modem/blub_cell_modem.overlay` - reroute AT command interface to uart1 (Feather RX/TX), not uart0 (USB via RP2040)
-- `cell_modem/blub_cell_modem.conf` - route logs to debug probe, not uart0; set version
+- `cell_modem/nrf9151_serial_modem.overlay` - reroute AT command interface to uart1 (Feather RX/TX), not uart0 (USB via RP2040)
+- `cell_modem/nrf9151_serial_modem.conf` - route logs to debug probe, not uart0; set version
 
 The project `mise.toml` sets `$EXTRA_DTC_OVERLAY_FILE` and `$EXTRA_CONF_FILE`
 to enable these tweaks. Reset these variables to build without the tweaks,
@@ -142,7 +142,7 @@ or install different tweaks.
 
 ## Version pinning
 
-- `cell_modem/setup.py` pins a commit of the `ncs-serial-modem` fork and
+- `cell_modem/nrf9151_build_setup.py` pins a commit of the `ncs-serial-modem` fork and
   picks a Nordic toolchain bundle version (`$NCS_VERSION`)
 - `ncs-serial-modem` in turn pins NCS itself (`dev.tmp/ncs/workspace/nrf`)
   via `west.yml`
@@ -152,6 +152,6 @@ or install different tweaks.
 To upgrade
 
 - inspect the NCS commit in `west.yml` and find the corresponding toolchain
-- bump the constants in `cell_modem/setup.py`
+- bump the constants in `cell_modem/nrf9151_build_setup.py`
 - run `mise run cell-modem-build-clean`
 - (optional) clean up old toolchains in `dev.tmp/nordic/toolchains/`

@@ -65,7 +65,7 @@ raw = true
 
 [tasks.cell-modem-setup]
 description = "Prepare Nordic cell modem build environment"
-run = "cell_modem/setup.py"
+run = "cell_modem/nrf9151_build_setup.py"
 
 [tasks.cell-modem-build]
 description = "Incremental Nordic cell modem app build"
@@ -73,7 +73,7 @@ depends = "cell-modem-setup"
 dir = "{{vars.cell_modem_app_dir}}"
 run = [
   "mise x -- west build",
-  "mise x -- hexmerge.py build/merged.hex {{config_root|quote}}/cell_modem/uicr-approtect-unlock.hex -o build/merged-with-unlock.hex",
+  "mise x -- hexmerge.py build/merged.hex {{config_root|quote}}/cell_modem/nrf9151_unlock_debug.hex -o build/merged-with-unlock.hex",
 ]
 wait_for = "cell-modem-clean"
 
