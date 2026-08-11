@@ -1,57 +1,47 @@
 import asyncio
-import asyncio.subprocess
-import re
 import shutil
+import sys
+from asyncio.subprocess import PIPE
 from pathlib import Path
 
-import pytest
+import pytest_asyncio
 
 EMULATOR_PATH = Path(__file__).parent / "emulator" / "rp2040_emulate.js"
 
 
-@pytest.fixture(scope="module")
-def emulated_output(request, timeout=30.0) -> str:
+@pytest_asyncio.fixture(scope="module")
+async def emulated_output_lines(request, timeout=30.0) -> list[str]:
     """Builds the sketch in the test module's directory, runs it under the
     RP2040 simulator, and returns lines printed to `Serial1` (aka uart0)."""
 
     sketch_dir = Path(request.path).parent
-    output_dir = sketch_dir / "output.tmp"
-    if output_dir.is_dir():
+    if (output_dir := sketch_dir / "output.tmp").is_dir():
         shutil.rmtree(output_dir)
 
-    compile_args = ["arduino-cli", "compile", "--output-dir=output.tmp"]
-    subprocess.run(compile_args, check=True, cwd=str(sketch_dir))
+    print("\n🏗️ Building:", sketch_dir.name)
+    args = ["arduino-cli", "compile", "--output-dir=output.tmp"]
+    proc = await asyncio.create_subprocess_exec(*args, cwd=str(sketch_dir))
+    assert (await proc.wait()) == 0, "arduino-cli compile failed"
 
     (uf2,) = output_dir.glob("*.uf2")
-    emulate_args = [
-        *("node", str(EMULATOR_PATH), str(uf2)),
-        "--expect=END-TEST",  # TODO: remove these
-        "--timeout=30",
-    ]
-
-    emulator = subprocess.Popen(emulate_args, stdout=subprocess.PIPE, text=True)
+    print("\n📟 Emulating:", uf2.name)
+    args = ["node", EMULATOR_PATH, str(uf2)]
+    proc = await asyncio.create_subprocess_exec(*args, stdout=PIPE)
     try:
-        out, _err = emulator.communicate(timeout=timeout)
-    except subprocess.TimeoutExpired:
-        emulator.kill()
-        out, _err = emulator.communicate()
+        lines: list[str] = []
+        async with asyncio.TaskGroup() as tasks:
+            tasks.create_task(asyncio.wait_for(proc.wait(), timeout=timeout))
+            with open(output_dir / "serial_log.txt", "wb", buffering=0) as log:
+                async for line in proc.stdout:
+                    lines.append(line)
+                    log.write(line)
+                    print(f"[{sketch_dir.name}] {line.decode().rstrip()}")
+                    assert not line.startswith(b"TEST-FAIL"), line
+                    if line.startswith(b"END-TEST"):
+                        print("🏁 Test done, terminating emulator")
+                        proc.terminate()
+    finally:
+        (proc.returncode is None) and proc.kill()
+        await proc.wait()
 
-    serial_text = sub.stdout_text()
-    (output_dir / "serial_log.txt").write_text(serial_text)
-    return serial_text
-
-
-@pytest.fixture(scope="module")
-def device_checks(emulated_output) -> dict:
-    """Parses the firmware's END-TEST summary line."""
-    match = re.search(
-        r"^END-TEST checks=(\d+) failures=(\d+)$", emulated_output, re.M
-    )
-    assert match, f"no END-TEST summary in output:\n{emulated_output}"
-    return {"checks": int(match[1]), "failures": int(match[2])}
-
-
-@pytest.fixture(scope="module")
-def device_info(emulated_output) -> dict[str, str]:
-    """Collects `INFO key=value` lines the firmware reported."""
-    return dict(re.findall(r"^INFO (\w+)=(.*)$", emulated_output, re.M))
+    return [t.decode().rstrip() for t in lines]

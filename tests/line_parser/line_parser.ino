@@ -23,7 +23,7 @@ static int failures = 0;
         ++checks;                                              \
         if (!(expr)) {                                         \
             ++failures;                                        \
-            Serial1.printf("FAIL line=%d %s\n", __LINE__, #expr); \
+            Serial1.printf("TEST-FAIL line=%d %s\n", __LINE__, #expr); \
         }                                                      \
     } while (0)
 
