@@ -33,10 +33,10 @@ PROBE_RS_CHIP = "nRF9151_xxAA"
 
 [hooks]
 postinstall = """
-git lfs install --local
+git lfs install --local >/dev/null
 git lfs pull
-uv sync
-npm ci --prefix {{config_root|quote}}/tests/emulator
+uv sync --quiet
+npm ci --silent --prefix {{config_root|quote}}/tests/emulator
 """
 
 [tasks]
