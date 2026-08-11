@@ -1,5 +1,6 @@
 [tools]
-arduino = "1.5.0"
+arduino = "1.5.1"
+node = "latest"                                                                # runs the RP2040 emulator, see tests/emulator/README.md
 python = "3.12"
 uv = "0.12"
 "github:probe-rs/probe-rs" = { matching = "probe-rs-tools", version = "0.32" }
@@ -35,12 +36,13 @@ postinstall = """
 git lfs install --local
 git lfs pull
 uv sync
+npm ci --prefix {{config_root|quote}}/tests/emulator
 """
 
 [tasks]
-arduino-cu = { alias = "cu", description = "c + u", depends = ["c", "u"] }
-arduino-um = { alias = "um", description = "u + m", depends = ["u", "m"] }
-arduino-cum = { alias = "cum", description = "c + um", depends = ["c", "um"] }
+cu = { description = "compile + upload", depends = ["c", "u"] }
+um = { description = "upload + monitor", depends = ["u", "m"] }
+cum = { description = "compile + upload + monitor", depends = ["c", "um"] }
 
 [tasks.arduino-c]
 alias = "c"
@@ -51,14 +53,14 @@ dir = "{{cwd}}"
 [tasks.arduino-u]
 alias = "u"
 description = "Upload Arduino sketch"
-run = 'port={{vars.port_arg|quote}} && arduino-cli upload --port="$port"'
+run = 'port={{vars.port_arg}} && arduino-cli upload --port="$port"'
 dir = "{{cwd}}"
 wait_for = "c"
 
 [tasks.arduino-m]
 alias = "m"
 description = "Monitor Arduino sketch"
-run = 'port={{vars.port_arg|quote}} && arduino-cli monitor --port="$port"'
+run = 'port={{vars.port_arg}} && arduino-cli monitor --port="$port"'
 dir = "{{cwd}}"
 wait_for = "u"
 raw = true
@@ -110,4 +112,4 @@ run = "probe-rs reset"
 [vars]
 cell_modem_app_dir = "dev.tmp/nordic/workspace/circuitdojo-ncs-serial-modem/app"
 uf2_dir = "/media/{{env.USER}}/RPI-RP2"
-port_arg = "$(okserial -l1 RP2040 || ls -d {{vars.uf2_dir|quote}})"
+port_arg = "$(okserial -n1 RP2040 || ls -d {{vars.uf2_dir|quote}})"

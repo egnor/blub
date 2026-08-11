@@ -15,6 +15,9 @@ __MACOSX/
 *.tmp
 .vscode/
 
+# Node
+node_modules/
+
 # Python
 *.egg-info
 *.pyc
