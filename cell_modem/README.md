@@ -153,5 +153,6 @@ To upgrade
 
 - inspect the NCS commit in `west.yml` and find the corresponding toolchain
 - bump the constants in `cell_modem/nrf9151_build_setup.py`
+- drop any `UPSTREAM_CHERRY_PICKS` entry the new `APP_REPO_REV` already has
 - run `mise run cell-modem-build-clean`
 - (optional) clean up old toolchains in `dev.tmp/nordic/toolchains/`

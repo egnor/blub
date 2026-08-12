@@ -17,6 +17,9 @@ from subprocess import CalledProcessError
 
 APP_REPO_URL = "https://github.com/circuitdojo/ncs-serial-modem"
 APP_REPO_REV = "6dc6a397836465fcff6b5d9de9b604e7f33bb753"
+UPSTREAM_REPO_URL = "https://github.com/nrfconnect/ncs-serial-modem"
+UPSTREAM_CHERRY_PICKS = ["refs/pull/381/head"]
+
 NCS_VERSION = "v3.4.0"  # toolchain bundle; must suit the app
 SDK_MANAGER_VERSION = "1.16.1"  # nrfutil plugin (nrfutil itself is unpinnable)
 
@@ -44,14 +47,19 @@ def main():
     run("nrfutil", "sdk-manager", "config", "install-dir", "set", ncs_dir)
     run("nrfutil", "sdk-manager", "install", NCS_VERSION)
 
-    logging.info("\n▶️ Nordic Serial Modem app repo (circuitdojo fork)")
+    logging.info("\n\n▶️ Nordic Serial Modem app repo (circuitdojo fork)")
     if not (app_dir / ".git").is_dir():
         app_dir.parent.mkdir(exist_ok=True, parents=True)
         run("git", "clone", APP_REPO_URL, app_dir)
     if stdout_text("git", "-C", app_dir, "status", "--porcelain"):
         ok_logging_setup.exit("%s has uncommitted changes", app_dir)
     run("git", "-C", app_dir, "fetch", "origin", APP_REPO_REV)
-    run("git", "-C", app_dir, "checkout", APP_REPO_REV)
+    run("git", "-C", app_dir, "checkout", "--quiet", "--detach", APP_REPO_REV)
+    for ref in UPSTREAM_CHERRY_PICKS:
+        run("git", "-C", app_dir, "fetch", UPSTREAM_REPO_URL, ref)
+        id = parser.prog or Path(__file__).name
+        id_args = ("-c", f"user.name={id}", "-c", f"user.email={id}@invalid")
+        run("git", "-C", app_dir, *id_args, "cherry-pick", "FETCH_HEAD")
 
     logging.info("\n▶️ Workspace for west (Zephyr OS build tool)")
     env_args = ("nrfutil", "sdk-manager", "toolchain", "env")
