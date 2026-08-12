@@ -5,9 +5,17 @@
 
 namespace arduino { class HardwareSerial; }
 
+struct CellModemStatus {
+  char const* versions[3];  // serial modem, nordic SDK, customer (us)
+};
+
 class CellModemClient {
  public:
   virtual ~CellModemClient() = default;
+  virtual CellModemStatus const& poll() = 0;
 };
 
-CellModemClient* make_cell_modem_client(arduino::HardwareSerial* serial);
+CellModemClient* make_cell_modem_client(
+  arduino::HardwareSerial* serial,
+  char const* mqtt_server
+);
