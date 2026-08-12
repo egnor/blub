@@ -111,8 +111,7 @@ Circuit Dojo has [advice for recovering](https://docs.circuitdojo.com/nrf9151-fe
 To get logs from the board: (note, only one `probe-rs` can run at a time)
 
 ```sh
-cd dev.tmp/ncs/workspace/circuitdojo-ncs-serial-modem/app
-probe-rs attach build/app/zephyr/zephyr.elf  # print RTT logs
+mise run cell-modem-logs
 ```
 
 When connected to the Feather TX/RX at 115200 baud (by default),
