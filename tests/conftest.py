@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest_asyncio
 
-EMULATOR_PATH = Path(__file__).parent / "emulator" / "rp2040_emulate.js"
+EMULATOR_PATH = Path(__file__).parent / "emulator" / "emulate_rp2040.js"
 
 
 @pytest_asyncio.fixture(scope="module")
@@ -25,7 +25,7 @@ async def emulated_output_lines(request, timeout=30.0) -> list[str]:
 
     (uf2,) = output_dir.glob("*.uf2")
     print("\n📟 Emulating:", uf2.name)
-    args = ["node", EMULATOR_PATH, str(uf2)]
+    args = (EMULATOR_PATH, str(uf2))
     proc = await asyncio.create_subprocess_exec(*args, stdout=PIPE)
     try:
         lines: list[str] = []

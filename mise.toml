@@ -34,8 +34,9 @@ PROBE_RS_CHIP = "nRF9151_xxAA"
 [hooks]
 postinstall = """
   echo '[git]'; git lfs install --local && git lfs pull
-  echo '[uv]'; uv sync
+  echo '[arduino-cli]'; arduino-cli update
   echo '[npm]'; npm ci --prefix {{config_root|quote}}/tests/emulator
+  echo '[uv]'; uv sync
 """
 
 [tasks]

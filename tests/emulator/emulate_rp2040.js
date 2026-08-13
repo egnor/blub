@@ -25,7 +25,7 @@ function loadUF2(filename, mcu) {
   if (!blocks) throw new Error(`no UF2 blocks found in ${filename}`);
 }
 
-if (process.argv.length != 3) throw new Error("Usage: node [script] fw.uf2");
+if (process.argv.length != 3) throw new Error("Usage: [script] fw.uf2");
 
 const simulator = new Simulator();
 const mcu = simulator.rp2040;
