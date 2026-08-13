@@ -26,6 +26,6 @@ class FakeSerial: public arduino::HardwareSerial {
   etl::circular_buffer_ext<uint8_t> write_buf;
 
  private:
-  std::unique_ptr<uint8_t[]> read_storage;
-  std::unique_ptr<uint8_t[]> write_storage;
+  etl::unique_ptr<uint8_t[]> read_storage;
+  etl::unique_ptr<uint8_t[]> write_storage;
 };

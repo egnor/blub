@@ -9,7 +9,9 @@ void setup() {
 
     FakeSerial fake_serial(1024, 1024);
 
-    auto cell_modem_client = make_cell_modem_client(&fake_serial, "mqtt-serv");
+    auto client = make_cell_modem_client(&fake_serial, "mqtt-serv");
+
+    client->poll();
 
     Serial1.println("END-TEST");
 }
