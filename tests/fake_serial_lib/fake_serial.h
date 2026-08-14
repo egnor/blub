@@ -10,6 +10,10 @@ class FakeSerial: public arduino::HardwareSerial {
   FakeSerial(int write_size, int read_size);
   virtual ~FakeSerial() = default;
 
+  unsigned long baud = 0;
+  etl::circular_buffer_ext<uint8_t> read_buf;
+  etl::circular_buffer_ext<uint8_t> write_buf;
+
   void begin(unsigned long baud) override { this->baud = baud; }
   void begin(unsigned long baud, uint16_t conf) override { this->baud = baud; }
   void end() override { this->baud = 0; }
@@ -20,10 +24,6 @@ class FakeSerial: public arduino::HardwareSerial {
   void flush() override {}
   int availableForWrite() override { return write_buf.available(); }
   operator bool() { return baud != 0; }
-
-  unsigned long baud = 0;
-  etl::circular_buffer_ext<uint8_t> read_buf;
-  etl::circular_buffer_ext<uint8_t> write_buf;
 
  private:
   etl::unique_ptr<uint8_t[]> read_storage;
