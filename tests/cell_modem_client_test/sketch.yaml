@@ -9,6 +9,6 @@ profiles:
     libraries:
       - dir: ../../base_lib
       - dir: ../../cell_modem
-      - dir: ../fake_serial_lib
+      - dir: ../test_lib
       - Embedded Template Library ETL (20.48.1)
       - OK Logging (0.3)

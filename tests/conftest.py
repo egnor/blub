@@ -1,10 +1,9 @@
 import asyncio
+import pytest
+import pytest_asyncio
 import shutil
-import sys
 from asyncio.subprocess import PIPE
 from pathlib import Path
-
-import pytest_asyncio
 
 EMULATOR_PATH = Path(__file__).parent / "emulator" / "emulate_rp2040.js"
 
@@ -24,7 +23,7 @@ async def emulated_output_lines(request, timeout=30.0) -> list[str]:
     assert (await proc.wait()) == 0, "arduino-cli compile failed"
 
     (uf2,) = output_dir.glob("*.uf2")
-    print("\n📟 Emulating:", uf2.name)
+    print("\n▶️ Emulating:", uf2.name)
     args = (EMULATOR_PATH, str(uf2))
     proc = await asyncio.create_subprocess_exec(*args, stdout=PIPE)
     try:
@@ -35,13 +34,27 @@ async def emulated_output_lines(request, timeout=30.0) -> list[str]:
                 async for line in proc.stdout:
                     lines.append(line)
                     log.write(line)
-                    print(f"[{sketch_dir.name}] {line.decode().rstrip()}")
-                    assert not line.startswith(b"TEST-FAIL"), line
+                    print(line.decode().rstrip())
+                    assert not line.startswith(b"ABORT-TEST"), line
                     if line.startswith(b"END-TEST"):
                         print("🏁 Test done, terminating emulator")
                         proc.terminate()
     finally:
         (proc.returncode is None) and proc.kill()
         await proc.wait()
+        print("⏹️ Emulator stopped")
 
     return [t.decode().rstrip() for t in lines]
+
+
+@pytest.fixture(scope="function")
+def check_emulated_output(emulated_output_lines, subtests):
+    lines = emulated_output_lines
+    assert "BEGIN-TEST" in lines
+    assert "END-TEST" in lines
+    begin_i, end_i = lines.index("BEGIN-TEST"), lines.index("END-TEST")
+    for i in range(begin_i, end_i):
+        if failure := lines[i].split("VERIFY-FAIL:", 1)[1:]:
+            with subtests.test(failure[0].strip()):
+                context = "\n  ".join(lines[i : i + 5])
+                assert "VERIFY-FAIL" not in lines[i], context

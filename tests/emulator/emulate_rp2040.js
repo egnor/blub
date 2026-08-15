@@ -36,6 +36,6 @@ mcu.loadBootrom(new Uint32Array(rom.buffer, rom.byteOffset, rom.length / 4));
 loadUF2(process.argv[2], mcu);
 
 // Relay uart0 (arduino Serial1) output to stdout.
-mcu.uart[0].onByte = (val) => process.stdout.write(String.fromCharCode(val));
+mcu.uart[0].onByte = (val) => process.stdout.write(new Uint8Array([val]));
 mcu.core.PC = FLASH_START;
 simulator.execute();
