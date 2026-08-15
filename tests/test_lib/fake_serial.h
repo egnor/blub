@@ -23,7 +23,7 @@ class FakeSerial: public arduino::HardwareSerial {
   int available() override { return read_buf.size(); }
   int peek() override { return read_buf.empty() ? -1 : read_buf.front(); }
   int read() override {
-    auto const v = peek();
+    int const v = peek();
     if (v >= 0) read_buf.remove_prefix(1);
     return v;
   }

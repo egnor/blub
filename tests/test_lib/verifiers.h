@@ -3,10 +3,10 @@
 #include <etl/string.h>
 #include <ok_logging.h>
 
-#define VERIFY_A_OP_B_STR(a, op, b) if (!(a op b)) {  \
-    etl::string_view const av(a), bv(b);  \
-    OK_REPORT_SOURCE(  \
-      OK_ERROR_LEVEL, "VERIFY-FAIL: %s %s %s\n  %s = [%.*s]\n  %s = [%.*s]",  \
-      #a, #op, #b, #a, av.size(), av.data(), #b, bv.size(), bv.data()  \
-    )  \
-  } else {}
+#define VERIFY_A_OP_B_STR(a, op, b) ({  \
+    etl::string_view const _av(a), _bv(b);  \
+    if (!(_av op _bv)) OK_REPORT_SOURCE(  \
+      OK_ERROR_LEVEL, "#TEST-FAIL# %s %s %s\n  %s = [%.*s]\n  %s = [%.*s]",  \
+      #a, #op, #b, #a, _av.size(), _av.data(), #b, _bv.size(), _bv.data()  \
+    );  \
+  })

@@ -1,5 +1,4 @@
 import asyncio
-import pytest
 import pytest_asyncio
 import shutil
 from asyncio.subprocess import PIPE
@@ -9,7 +8,7 @@ EMULATOR_PATH = Path(__file__).parent / "emulator" / "emulate_rp2040.js"
 
 
 @pytest_asyncio.fixture(scope="module")
-async def emulated_output_lines(request, timeout=30.0) -> list[str]:
+async def emulated_test_output(request, timeout=30.0) -> list[str]:
     """Builds the sketch in the test module's directory, runs it under the
     RP2040 simulator, and returns lines printed to `Serial1` (aka uart0)."""
 
@@ -26,35 +25,34 @@ async def emulated_output_lines(request, timeout=30.0) -> list[str]:
     print("\n▶️ Emulating:", uf2.name)
     args = (EMULATOR_PATH, str(uf2))
     proc = await asyncio.create_subprocess_exec(*args, stdout=PIPE)
+    started, ended = False, False
     try:
         lines: list[str] = []
+        failures: list[str] = []
         async with asyncio.TaskGroup() as tasks:
             tasks.create_task(asyncio.wait_for(proc.wait(), timeout=timeout))
             with open(output_dir / "serial_log.txt", "wb", buffering=0) as log:
                 async for line in proc.stdout:
-                    lines.append(line)
                     log.write(line)
-                    print(line.decode().rstrip())
-                    assert not line.startswith(b"ABORT-TEST"), line
-                    if line.startswith(b"END-TEST"):
-                        print("🏁 Test done, terminating emulator")
+                    print(text := line.decode().rstrip())
+                    assert "#TEST-ABORT#" not in text, text
+                    if "#TEST-BEGIN#" in text:
+                        assert not started, "Extra #TEST-BEGIN#: {text}"
+                        started = True
+                    if started and not ended:
+                        lines.append(text)
+                    if "#TEST-FAIL#" in text:
+                        failures.append(text)
+                    if "#TEST-END#" in text:
+                        assert started, f"No #TEST-BEGIN#: {text}"
+                        assert not ended, f"Extra #TEST-END#: {text}"
+                        ended = True
+                        print("🏁 Test done, stopping emulator")
                         proc.terminate()
     finally:
         (proc.returncode is None) and proc.kill()
         await proc.wait()
         print("⏹️ Emulator stopped")
 
-    return [t.decode().rstrip() for t in lines]
-
-
-@pytest.fixture(scope="function")
-def check_emulated_output(emulated_output_lines, subtests):
-    lines = emulated_output_lines
-    assert "BEGIN-TEST" in lines
-    assert "END-TEST" in lines
-    begin_i, end_i = lines.index("BEGIN-TEST"), lines.index("END-TEST")
-    for i in range(begin_i, end_i):
-        if failure := lines[i].split("VERIFY-FAIL:", 1)[1:]:
-            with subtests.test(failure[0].strip()):
-                context = "\n  ".join(lines[i : i + 5])
-                assert "VERIFY-FAIL" not in lines[i], context
+    assert not failures, f"Test failed:\n  {'\n  '.join(failures)}"
+    return lines

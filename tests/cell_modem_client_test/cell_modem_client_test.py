@@ -1,2 +1,2 @@
-def test_no_device_failures(check_emulated_output):
+def test_cell_modem_client(emulated_test_output):
     pass
