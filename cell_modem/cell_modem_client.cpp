@@ -19,23 +19,34 @@ class CellModemClientDef : public CellModemClient {
     : serial(s), mqtt_server(mqtt) {}
 
   CellModemStatus const& poll() override {
-    auto const avail = serial->available();
-    while (avail > 0) {
+    for (int avail = 0; avail || ((avail = serial->available()) > 0); --avail) {
       if (in_buf.full()) {
-        OK_ERROR("Dropping big input: %s", input_summary().c_str());
+        OK_ERROR("Dropping long input: %s", input_summary().c_str());
         in_buf.clear();
       }
-      auto const ch = serial->read();
+      int const ch = serial->read();
       if (ch < 0) {
         OK_ERROR("Serial read error: available=%d ch=%d", avail, ch);
         break;
-      }
-      in_buf.push_back(ch);
-      if (in_expect > 0 ? in_buf.size() >= in_expect : in_buf.back() == '\n') {
-        OK_DETAIL("Input: %s", input_summary().c_str());
-        handle_input();
+      } else if (in_expect > 0) {
+        in_buf.push_back(ch);
+        if (in_buf.size() >= in_expect) {
+          OK_DETAIL("Input block: %s", input_summary().c_str());
+          handle_input();
+          in_buf.clear();
+          in_expect = 0;
+        }
+      } else if (ch == '\r' || ch == '\n') {
+        if (!in_buf.empty()) {
+          OK_DETAIL("Input: %s", input_summary().c_str());
+          handle_input();
+          in_buf.clear();
+        }
+      } else if (ch < 32 || ch >= 256) {
+        OK_ERROR("Bad input char (state=%d): 0x02x", state, ch);
         in_buf.clear();
-        in_expect = 0;
+      } else {
+        in_buf.push_back(ch);
       }
     }
 
@@ -49,11 +60,12 @@ class CellModemClientDef : public CellModemClient {
     if (state == State::IDLE && out_complete >= out_buf.size()) {
       out_complete = 0;
       out_buf.clear();
+      state_deadline = now + 1_s;
       if (status.hardware.empty()) {
         out_buf = "AT+CGMM\r\n";
         state = State::AT_CGMM_WAIT;
       } else if (status.imeisv.empty()) {
-        out_buf = "AT+CGSN=1\r\n";
+        out_buf = "AT+CGSN=2\r\n";
         state = State::AT_CGSN_WAIT;
       } else if (status.versions[0].empty()) {
         out_buf = "AT+CGMR\r\n";
@@ -105,38 +117,51 @@ class CellModemClientDef : public CellModemClient {
       return;
     }
 
-    auto const trimmed = etl::trim_view_whitespace(in_buf);
+    etl::string_view rest(in_buf);
     switch (state) {
       case State::IDLE: {
         break;
       }
-
       case State::AT_CGMM_WAIT: {
-        status.hardware = trimmed.empty() ? "-" : trimmed;
+        status.hardware = etl::trim_view_whitespace(rest);
+        if (status.hardware.empty()) status.hardware = "-";
         state = State::OK_WAIT;
         break;
       }
-
       case State::AT_CGMR_WAIT: {
-        status.versions[0] = trimmed.empty() ? "-" : trimmed;
+        status.versions[0] = etl::trim_view_whitespace(rest);
+        if (status.versions[0].empty()) status.versions[0] = "-";
         state = State::OK_WAIT;
         break;
       }
-
       case State::AT_CGSN_WAIT: {
-        status.imeisv = trimmed.empty() ? "-" : trimmed;
+        etl::string_view value;
+        if (eat_token(&rest, "+CGSN:") && parse_quoted(&rest, &value)) {
+          status.imeisv = value.empty() ? "-" : value;
+        } else {
+          OK_ERROR("Bad CGSN reply: %s", input_summary().c_str());
+        }
         state = State::OK_WAIT;
         break;
       }
-
       case State::AT_XSMVER_WAIT: {
-        // TODO: parse XSMVER reply
+        etl::string_view sm_version, ncs_version, cust_version;
+        if (
+          eat_token(&rest, "#XSMVER:") && parse_quoted(&rest, &sm_version) &&
+          eat_token(&rest, ",") && parse_quoted(&rest, &ncs_version) &&
+          eat_token(&rest, ",") && parse_quoted(&rest, &cust_version)
+        ) {
+          status.versions[1] = sm_version.empty() ? "-" : sm_version;
+          status.versions[2] = ncs_version.empty() ? "-" : ncs_version;
+          status.versions[3] = cust_version.empty() ? "-" : cust_version;
+        } else {
+          OK_ERROR("Bad #XSMVER reply: %s", input_summary().c_str());
+        }
         state = State::OK_WAIT;
         break;
       }
-
       case State::OK_WAIT: {
-        if (trimmed != "OK") {
+        if (!eat_token(&rest, "OK")) {
           OK_ERROR("Bad input (state=%d): %s", state, input_summary().c_str());
         }
         state = State::IDLE;
@@ -158,6 +183,23 @@ class CellModemClientDef : public CellModemClient {
       }
     }
     return out;
+  }
+
+  static bool eat_token(etl::string_view* str, etl::string_view literal) {
+    auto view = etl::trim_view_whitespace_left(*str);
+    if (!view.starts_with(literal)) return false;
+    *str = view.substr(literal.size());
+    return true;
+  }
+
+  static bool parse_quoted(etl::string_view* str, etl::string_view* out) {
+    auto view = *str;
+    if (!eat_token(&view, "\"")) return false;
+    auto const end = view.find('"');
+    if (end == etl::string_view::npos) return false;
+    *out = view.substr(0, end);
+    *str = view.substr(end + 1);
+    return true;
   }
 };
 

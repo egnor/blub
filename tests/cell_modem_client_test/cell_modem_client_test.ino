@@ -44,9 +44,9 @@ static void test_modem_client_setup() {
 void setup() {
   Serial1.begin(115200);
   ok_logging_stream = &Serial1;
-  OK_NOTE("#TEST-BEGIN#");
+  OK_NOTE("#BEGIN-TESTS#");
   test_modem_client_setup();
-  OK_NOTE("#TEST-END#");
+  OK_NOTE("#END-TESTS#");
 }
 
 void loop() {}

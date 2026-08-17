@@ -35,17 +35,17 @@ async def emulated_test_output(request, timeout=30.0) -> list[str]:
                 async for line in proc.stdout:
                     log.write(line)
                     print(text := line.decode().rstrip())
-                    assert "#TEST-ABORT#" not in text, text
-                    if "#TEST-BEGIN#" in text:
-                        assert not started, "Extra #TEST-BEGIN#: {text}"
+                    assert "#ABORT-TESTS#" not in text, text
+                    if "#BEGIN-TESTS#" in text:
+                        assert not started, "Extra #BEGIN-TESTS#: {text}"
                         started = True
                     if started and not ended:
                         lines.append(text)
                     if "#TEST-FAIL#" in text:
                         failures.append(text)
-                    if "#TEST-END#" in text:
-                        assert started, f"No #TEST-BEGIN#: {text}"
-                        assert not ended, f"Extra #TEST-END#: {text}"
+                    if "#END-TESTS#" in text:
+                        assert started, f"No #BEGIN-TESTS#: {text}"
+                        assert not ended, f"Extra #END-TESTS#: {text}"
                         ended = True
                         print("🏁 Test done, stopping emulator")
                         proc.terminate()
