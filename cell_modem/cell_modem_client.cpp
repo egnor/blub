@@ -73,6 +73,10 @@ class CellModemClientDef : public CellModemClient {
       } else if (status.versions[1].empty()) {
         out_buf = "AT#XSMVER\r\n";
         state = State::AT_XSMVER_WAIT;
+      } else if (now >= next_status_poll) {
+        next_status_poll = now + 30_s;
+        out_buf = "AT%XMONITOR\r\n";
+        state = State::AT_XMONITOR_WAIT;
       }
       // TODO: more outgoing
     }
@@ -96,6 +100,7 @@ class CellModemClientDef : public CellModemClient {
     AT_CGMM_WAIT,
     AT_CGMR_WAIT,
     AT_CGSN_WAIT,
+    AT_XMONITOR_WAIT,
     AT_XSMVER_WAIT,
     OK_WAIT,
   };
