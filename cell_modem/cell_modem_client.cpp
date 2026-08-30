@@ -32,14 +32,14 @@ class CellModemClientDef : public CellModemClient {
         in_buf.push_back(ch);
         if (in_buf.size() >= in_expect) {
           OK_DETAIL("Input block: %s", input_summary().c_str());
-          handle_input();
+          handle_input_block();
           in_buf.clear();
           in_expect = 0;
         }
       } else if (ch == '\r' || ch == '\n') {
         if (!in_buf.empty()) {
           OK_DETAIL("Input: %s", input_summary().c_str());
-          handle_input();
+          handle_input_line();
           in_buf.clear();
         }
       } else if (ch < 32 || ch >= 256) {
@@ -54,7 +54,12 @@ class CellModemClientDef : public CellModemClient {
     if (state != State::IDLE && now >= state_deadline) {
       OK_ERROR("Command timeout (state=%d), polling", state);
       state = State::IDLE;
-      next_status_poll = {};  // Poll until we get a response
+      next_periodic = {};  // Poll until we get a response
+    }
+
+    if (periodic_step < 0 && now >= next_periodic) {
+      next_periodic = now + 10_s;
+      periodic_step = 0;
     }
 
     if (state == State::IDLE && out_complete >= out_buf.size()) {
@@ -73,10 +78,17 @@ class CellModemClientDef : public CellModemClient {
       } else if (status.versions[1].empty()) {
         out_buf = "AT#XSMVER\r\n";
         state = State::AT_XSMVER_WAIT;
-      } else if (now >= next_status_poll) {
-        next_status_poll = now + 30_s;
+      } else if (periodic_step == 0) {
+        out_buf = "AT+CMEE=1\r\n";
+        state = State::OK_WAIT;
+      } else if (periodic_step == 1) {
+        out_buf = "AT+CFUN=1\r\n";
+        state = State::OK_WAIT;
+      } else if (periodic_step == 2) {
         out_buf = "AT%XMONITOR\r\n";
         state = State::AT_XMONITOR_WAIT;
+      } else if (periodic_step == 3) {
+        periodic_step = -1;
       }
       // TODO: more outgoing
     }
@@ -102,12 +114,14 @@ class CellModemClientDef : public CellModemClient {
     AT_CGSN_WAIT,
     AT_XMONITOR_WAIT,
     AT_XSMVER_WAIT,
+    FAILED,
     OK_WAIT,
   };
 
   State state = State::IDLE;
   time_point state_deadline = {};
-  time_point next_status_poll = {};
+  time_point next_periodic = {};
+  int periodic_step = -1;
   CellModemStatus status;
 
   etl::string<8192> in_buf;
@@ -116,63 +130,106 @@ class CellModemClientDef : public CellModemClient {
   etl::string<256> out_buf;
   int out_complete = 0;
 
-  void handle_input() {
-    if (in_expect > 0) {
-      // TODO: handle
+  void handle_input_block() {
+    OK_ERROR("Unexpected (state=%d): %s", state, input_summary().c_str());
+  }
+
+  void handle_input_line() {
+    etl::string_view rest(in_buf);
+
+    if (eat(&rest, "Ready")) {
+      if (status.running) {
+        OK_NOTE("Modem init: %s", input_summary().c_str());
+      } else {
+        OK_ERROR("Modem reset (state=%d): %s", state, input_summary().c_str());
+      }
+      state = State::IDLE;
+      next_poll_trigger = {};  // Initialize immediately
+      status.running = true;
+      status.online = false;
       return;
     }
 
-    etl::string_view rest(in_buf);
-    switch (state) {
-      case State::IDLE: {
-        break;
-      }
-      case State::AT_CGMM_WAIT: {
-        status.hardware = etl::trim_view_whitespace(rest);
-        if (status.hardware.empty()) status.hardware = "-";
-        state = State::OK_WAIT;
-        break;
-      }
-      case State::AT_CGMR_WAIT: {
-        status.versions[0] = etl::trim_view_whitespace(rest);
-        if (status.versions[0].empty()) status.versions[0] = "-";
-        state = State::OK_WAIT;
-        break;
-      }
-      case State::AT_CGSN_WAIT: {
-        etl::string_view value;
-        if (eat_token(&rest, "+CGSN:") && parse_quoted(&rest, &value)) {
-          status.imeisv = value.empty() ? "-" : value;
-        } else {
-          OK_ERROR("Bad CGSN reply: %s", input_summary().c_str());
-        }
-        state = State::OK_WAIT;
-        break;
-      }
-      case State::AT_XSMVER_WAIT: {
-        etl::string_view sm_version, ncs_version, cust_version;
-        if (
-          eat_token(&rest, "#XSMVER:") && parse_quoted(&rest, &sm_version) &&
-          eat_token(&rest, ",") && parse_quoted(&rest, &ncs_version) &&
-          eat_token(&rest, ",") && parse_quoted(&rest, &cust_version)
-        ) {
-          status.versions[1] = sm_version.empty() ? "-" : sm_version;
-          status.versions[2] = ncs_version.empty() ? "-" : ncs_version;
-          status.versions[3] = cust_version.empty() ? "-" : cust_version;
-        } else {
-          OK_ERROR("Bad #XSMVER reply: %s", input_summary().c_str());
-        }
-        state = State::OK_WAIT;
-        break;
-      }
-      case State::OK_WAIT: {
-        if (!eat_token(&rest, "OK")) {
-          OK_ERROR("Bad input (state=%d): %s", state, input_summary().c_str());
-        }
-        state = State::IDLE;
-        break;
-      }
+    if (eat(&rest, "#XMODEM:") || eat(&rest, "INIT ERROR")) {
+      OK_ERROR("Modem fault (state=%d): %s", state, input_summary().c_str());
+      state = State::FAILED;
+      state_deadline = etl::chrono::steady_clock::now() + 5_s;
+      status.online = false;
+      status.failed = true;
     }
+
+    if (
+      eat(&rest, "ERROR") ||
+      eat(&rest, "+CME ERROR:") ||
+      eat(&rest, "+CMS ERROR:")
+    ) {
+      OK_ERROR("Modem error (state=%d): %s", state, input_summary().c_str());
+      state = State::IDLE;
+      return;
+    }
+
+    if (state == State::AT_CGMM_WAIT) {
+      if (eat(&rest, "OK")) {
+        status.hardware = "-";
+        state = State::IDLE;
+        return;
+      } else if (!eat(&rest, "+") && !eat(&rest, "#")) {
+        status.hardware = etl::trim_view_whitespace(rest);
+        state = State::OK_WAIT;
+        return;
+      }
+    } else if (state == State::AT_CGMR_WAIT) {
+      if (eat(&rest, "OK")) {
+        status.versions[0] = "-";
+        state = State::IDLE;
+        return;
+      } else if (!eat(&rest, "+") && !eat(&rest, "#")) {
+        status.versions[0] = etl::trim_view_whitespace(rest);
+        state = State::OK_WAIT;
+        return;
+      }
+    } else if (state == State::AT_CGSN_WAIT) {
+      etl::string_view v;
+      if (eat(&rest, "+CGSN:") && eat_quoted(&rest, &v)) {
+        status.imeisv = v.empty() ? "-" : v;
+        state = State::OK_WAIT;
+        return;
+      }
+    } else if (state == State::AT_XMONITOR_WAIT) {
+      int reg;
+      if (eat(&rest, "#XMONITOR:") && eat_int(&rest, &reg)) {
+        state = State::OK_WAIT;
+        status.running = (reg != 4);
+        status.online = (reg == 1 || reg == 3);
+        status.roaming = (reg == 5);
+        status.denied = (reg == 3);
+        status.failed = (reg == 90);
+        return;
+      }
+    } else if (state == State::AT_XSMVER_WAIT) {
+      etl::string_view v1, v2, v3;
+      if (
+        eat(&rest, "#XSMVER:") && eat_quoted(&rest, &v1) &&
+        eat(&rest, ",") && eat_quoted(&rest, &v2) &&
+        eat(&rest, ",") && eat_quoted(&rest, &v3)
+      ) {
+        status.versions[1] = v1.empty() ? "-" : v1;
+        status.versions[2] = v2.empty() ? "-" : v2;
+        status.versions[3] = v3.empty() ? "-" : v3;
+        state = State::OK_WAIT;
+        return;
+      }
+    } else if (state == State::OK_WAIT) {
+      if (eat(&rest, "OK")) {
+        if (poll_step >= 0) ++poll_step;
+        state = State::IDLE;
+        return;
+      }
+    } else if (state != State::IDLE) {
+      OK_FATAL("Bad state: %d", state);
+    }
+
+    OK_ERROR("Unexpected (state=%d): %s", state, input_summary().c_str());
   }
 
   etl::string<40> input_summary() const {
@@ -190,16 +247,25 @@ class CellModemClientDef : public CellModemClient {
     return out;
   }
 
-  static bool eat_token(etl::string_view* str, etl::string_view literal) {
+  static bool eat(etl::string_view* str, etl::string_view literal) {
     auto view = etl::trim_view_whitespace_left(*str);
     if (!view.starts_with(literal)) return false;
     *str = view.substr(literal.size());
     return true;
   }
 
-  static bool parse_quoted(etl::string_view* str, etl::string_view* out) {
+  static bool eat_int(etl::string_view* str, int* out) {
+    auto view = etl::trim_view_whitespace_left(*str);
+    auto const len = view.find_first_not_of("0123456789");
+    if (len <= 0) return false;
+    *out = etl::to_arithmetic<int>(view.substr(0, len));
+    *str = view.substr(len);
+    return true;
+  }
+
+  static bool eat_quoted(etl::string_view* str, etl::string_view* out) {
     auto view = *str;
-    if (!eat_token(&view, "\"")) return false;
+    if (!eat(&view, "\"")) return false;
     auto const end = view.find('"');
     if (end == etl::string_view::npos) return false;
     *out = view.substr(0, end);
