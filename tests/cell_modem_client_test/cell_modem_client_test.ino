@@ -4,6 +4,8 @@
 #include <fake_serial.h>
 #include <verifiers.h>
 
+char const* const ok_logging_config = "DETAIL";
+
 static OkLoggingContext OK_CONTEXT("cell_modem_client_test");
 
 static void test_modem_client_setup() {
@@ -30,7 +32,27 @@ static void test_modem_client_setup() {
   client->poll();
   VERIFY_A_OP_B_STR(write_buf, ==, "AT#XSMVER\r\n");
   write_buf.clear();
-  fake_serial.read_buf = "#XSMVER: \"Fake SM\",\"Fake NCS\",\"Fake Blub\"\r\n";
+  fake_serial.read_buf = "#XSMVER: \"Fake SM\",\"Fake NCS\",\"Blub\"\r\nOK\r\n";
+
+  client->poll();
+  VERIFY_A_OP_B_STR(write_buf, ==, "AT+CMEE=1\r\n");
+  write_buf.clear();
+  fake_serial.read_buf = "OK\r\n";
+
+  client->poll();
+  VERIFY_A_OP_B_STR(write_buf, ==, "AT+CFUN=1\r\n");
+  write_buf.clear();
+  fake_serial.read_buf = "OK\r\n";
+
+  client->poll();
+  VERIFY_A_OP_B_STR(write_buf, ==, "AT%XMONITOR\r\n");
+  write_buf.clear();
+  fake_serial.read_buf = "%XMONITOR: 5,"
+    "\"\",\"\",\"310260\",\"417B\",7,12,\"02C80005\",211,5035,49,31,"
+    "\"\",\"11100000\",\"11100000\",\"01001001\"\r\nOK\r\n";
+
+  client->poll();
+  VERIFY_A_OP_B_STR(write_buf, ==, "");
 
   auto const& status = client->poll();
   VERIFY_A_OP_B_STR(status.hardware, ==, "Fake Hardware");
@@ -38,7 +60,7 @@ static void test_modem_client_setup() {
   VERIFY_A_OP_B_STR(status.versions[0], ==, "Fake Revision");
   VERIFY_A_OP_B_STR(status.versions[1], ==, "Fake SM");
   VERIFY_A_OP_B_STR(status.versions[2], ==, "Fake NCS");
-  VERIFY_A_OP_B_STR(status.versions[3], ==, "Fake Blub");
+  VERIFY_A_OP_B_STR(status.versions[3], ==, "Blub");
 }
 
 void setup() {

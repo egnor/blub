@@ -6,6 +6,7 @@
 #include <etl/format.h>
 #include <etl/string.h>
 #include <etl/string_utilities.h>
+#include <etl/to_arithmetic.h>
 #include <memory>
 #include <ok_logging.h>
 
@@ -144,7 +145,7 @@ class CellModemClientDef : public CellModemClient {
         OK_ERROR("Modem reset (state=%d): %s", state, input_summary().c_str());
       }
       state = State::IDLE;
-      next_poll_trigger = {};  // Initialize immediately
+      next_periodic = {};  // Initialize immediately
       status.running = true;
       status.online = false;
       return;
@@ -169,7 +170,7 @@ class CellModemClientDef : public CellModemClient {
     }
 
     if (state == State::AT_CGMM_WAIT) {
-      if (eat(&rest, "OK")) {
+      if (eat(&rest, "OK") && etl::trim_view_whitespace(rest).empty()) {
         status.hardware = "-";
         state = State::IDLE;
         return;
@@ -179,7 +180,7 @@ class CellModemClientDef : public CellModemClient {
         return;
       }
     } else if (state == State::AT_CGMR_WAIT) {
-      if (eat(&rest, "OK")) {
+      if (eat(&rest, "OK") && etl::trim_view_whitespace(rest).empty()) {
         status.versions[0] = "-";
         state = State::IDLE;
         return;
@@ -197,13 +198,52 @@ class CellModemClientDef : public CellModemClient {
       }
     } else if (state == State::AT_XMONITOR_WAIT) {
       int reg;
-      if (eat(&rest, "#XMONITOR:") && eat_int(&rest, &reg)) {
+      if (eat(&rest, "%XMONITOR:") && eat_int(&rest, &reg)) {
         state = State::OK_WAIT;
-        status.running = (reg != 4);
-        status.online = (reg == 1 || reg == 3);
-        status.roaming = (reg == 5);
-        status.denied = (reg == 3);
-        status.failed = (reg == 90);
+        status.running = (reg == 1 || reg == 2 || reg == 5);
+        status.online = (reg == 1 || reg == 5);
+        if (reg == 1) status.roaming = false;
+        if (reg == 5) status.roaming = true;
+        if (reg == 3 || reg == 90) status.failed = true;
+        if (status.running) status.failed = false;
+
+        etl::string_view op_full, op_short, op_mcc_mnc;
+        etl::string_view cell_tac, cell_id;
+        int cell_phys_id;
+        int radio_tech, radio_band, radio_earfcn, radio_rsrp, radio_snr;
+        etl::string_view power_edrx, power_atime, power_tau_ext, power_tau;
+        if (
+          eat(&rest, ",") && eat_quoted(&rest, &op_full) &&
+          eat(&rest, ",") && eat_quoted(&rest, &op_short) &&
+          eat(&rest, ",") && eat_quoted(&rest, &op_mcc_mnc) &&
+          eat(&rest, ",") && eat_quoted(&rest, &cell_tac) &&
+          eat(&rest, ",") && eat_int(&rest, &radio_tech) &&
+          eat(&rest, ",") && eat_int(&rest, &radio_band) &&
+          eat(&rest, ",") && eat_quoted(&rest, &cell_id) &&
+          eat(&rest, ",") && eat_int(&rest, &cell_phys_id) &&
+          eat(&rest, ",") && eat_int(&rest, &radio_earfcn) &&
+          eat(&rest, ",") && eat_int(&rest, &radio_rsrp) &&
+          eat(&rest, ",") && eat_int(&rest, &radio_snr) &&
+          eat(&rest, ",") && eat_quoted(&rest, &power_edrx) &&
+          eat(&rest, ",") && eat_quoted(&rest, &power_atime) &&
+          eat(&rest, ",") && eat_quoted(&rest, &power_tau_ext) &&
+          eat(&rest, ",") && eat_quoted(&rest, &power_tau)
+        ) {
+          status.op_mcc = etl::to_arithmetic<uint16_t>(op_mcc_mnc.substr(0, 3));
+          status.op_mnc = etl::to_arithmetic<uint16_t>(op_mcc_mnc.substr(0, 3));
+          status.cell_tac = etl::to_arithmetic<uint16_t>(cell_tac, etl::hex);
+          status.cell_phys_id = cell_phys_id;
+          status.cell_id = etl::to_arithmetic<uint32_t>(cell_id, etl::hex);
+          status.radio_earfcn = radio_earfcn;
+          status.radio_tech = radio_tech;
+          status.radio_band = radio_band;
+          status.radio_rsrp = radio_rsrp;
+          status.radio_snr = radio_snr;
+        }
+        if (!etl::trim_view_whitespace(rest).empty()) {
+          OK_ERROR("Bad %%XMONITOR args: %s", input_summary().c_str());
+        }
+        state = State::OK_WAIT;
         return;
       }
     } else if (state == State::AT_XSMVER_WAIT) {
@@ -220,8 +260,8 @@ class CellModemClientDef : public CellModemClient {
         return;
       }
     } else if (state == State::OK_WAIT) {
-      if (eat(&rest, "OK")) {
-        if (poll_step >= 0) ++poll_step;
+      if (eat(&rest, "OK") && etl::trim_view_whitespace(rest).empty()) {
+        if (periodic_step >= 0) ++periodic_step;
         state = State::IDLE;
         return;
       }

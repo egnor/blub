@@ -9,10 +9,16 @@
 namespace arduino { class HardwareSerial; }
 
 struct CellModemStatus {
-  bool running: 1, online: 1, roaming: 1, denied: 1, failed: 1;
   etl::string<32> hardware;
   etl::string<32> imeisv;
   etl::string<32> versions[4];  // baseband, nordic SDK, serial app, customer
+                                //
+  bool running, online, roaming, failed;
+  uint16_t op_mcc, op_mnc, cell_tac, cell_phys_id;
+  uint32_t cell_id;
+  uint16_t radio_earfcn;
+  uint8_t radio_tech, radio_band, radio_rsrp, radio_snr;
+
 };
 
 class CellModemClient {
