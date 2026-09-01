@@ -313,7 +313,8 @@ LF, `"`, or NUL. Read it by **byte count**, never by line. Payload size is
 unbounded by the firmware — it streams straight through — so cap it
 client-side and discard the excess.
 
-The documented order is:
+Framing, **as we build it** (the `#XMQTTMSG` fix in `LOCAL_PATCHES` is
+required for this — see below):
 
 ```
 #XMQTTMSG: <topic_len>,<msg_len>CRLF
@@ -322,23 +323,26 @@ The documented order is:
 #XMQTTEVT: 2,0
 ```
 
-**⚠ On our pinned build the header comes LAST.** Confirmed on hardware —
-subscribing to `test` and publishing `test` to it produces:
+Verified on hardware: subscribing to `test` and publishing `test message body`
+gives `#XMQTTMSG: 4,17`, then `test`, then the 17 payload bytes, then
+`#XMQTTEVT: 2,0`.
 
-```
-test                                     <- topic, no leading delimiter
-test                                     <- payload
-#XMQTTMSG: 4,4                           <- header, after the data it describes
-#XMQTTEVT: 2,0
-```
-
-Why: `handle_mqtt_publish_evt()` takes `sm_at_host_lock()`, which increments
+**⚠ Stock fork firmware gets this backwards** — do not trust an unpatched
+build. `handle_mqtt_publish_evt()` takes `sm_at_host_lock()`, which increments
 `executing_lock`; `is_idle_ctx()` requires that to be `0`; and `urc_send_to()`
 on a pipe-specific ctx appends to `ctx->buffered_urcs`, flushing only when idle.
 So the header is *queued* inside the lock while topic and payload go straight
-out via `data_send()`, and the header lands at unlock.
+out via `data_send()`, and the header lands at unlock, after the bytes it
+describes:
 
-This is unparseable in general, not merely awkward. The data block has **no
+```
+test
+test message body
+#XMQTTMSG: 4,17          <- flushed at unlock, too late to be useful
+#XMQTTEVT: 2,0
+```
+
+That is unparseable in general, not merely awkward. The data block has **no
 leading delimiter** — the topic just starts — so without a header first there is
 nothing to detect the start of a message, and since payloads are raw, one
 containing `\r\n#XMQTTEVT: 2,0` is indistinguishable from the real thing.
@@ -349,12 +353,9 @@ line: the NCS import (`0b6369c`) had `rsp_send()` — immediate, correct. Nordic
 `62061b1` *"app: Allow targeting responses to a pipe"* (3 Mar 2026) swept it to
 `urc_send_to()`. That same commit is the one that *defines* `rsp_send_to()`, so
 the correct replacement existed in the changeset that broke it. Upstream
-`7c1cb92` (Aug 2026) puts it back.
-
-**Local fix:** one line in `handle_mqtt_publish_evt()`, `urc_send_to` →
-`rsp_send_to` for the `#XMQTTMSG` line, alongside the existing PR #381
-cherry-pick. Do not cherry-pick `7c1cb92` for this — the fix is entangled with a
-poll-callback rewrite and a malloc refactor.
+`7c1cb92` (Aug 2026) puts it back; the fork has not rebased. We patch it locally
+in `nrf9151_build_setup.py` rather than carrying `7c1cb92`, which is entangled
+with a poll-callback rewrite and a malloc refactor.
 
 ## Upstream drift
 
@@ -370,9 +371,10 @@ course, but know what changes:
 **Fixes for us**
 
 * **The inbound framing bug above** (confirmed on hardware). The `#XMQTTMSG`
-  header switches back to `rsp_send_to()` so it precedes the payload. This is
-  the only reason to care about this commit at all, and it is cheaper to patch
-  locally.
+  header switches back to `rsp_send_to()` so it precedes the payload. This was
+  the only reason to care about this commit, and we already carry the one-line
+  fix in `LOCAL_PATCHES` — when the fork rebases past it, `git apply` will fail
+  and that entry comes out.
 * **`#XMQTTCON=0` stops blocking.** `k_thread_join(..., K_SECONDS(CONFIG_MQTT_KEEPALIVE))`
   is gone, replaced by `k_work_cancel_delayable()` and immediate teardown. The
   60-second worst case in *Timeouts and blocking* disappears.
