@@ -78,18 +78,35 @@ mutual TLS. PEM must use CRLF line endings.
 
 ## MQTT
 
-| Command | Response | Notes |
-|---|---|---|
-| `AT#XMQTTCFG="<id>",<keepalive>,<clean>` | `OK` | Before connecting. `<clean>`: `0` persistent, `1` clean |
-| `AT#XMQTTCFG?` | `#XMQTTCFG: "<id>",<ka>,<clean>` | |
-| `AT#XMQTTCON=1,"<user>","<pass>","<host>",<port>[,<sec_tag>]` | `OK` then `#XMQTTEVT: 0,<r>` | `1` = IPv4, `2` = IPv6. Add `<sec_tag>` for TLS (port 8883) |
-| `AT#XMQTTCON=0` | `OK` then `#XMQTTEVT: 1,<r>` | Disconnect |
-| `AT#XMQTTCON?` | `#XMQTTCON: 0` **or** `#XMQTTCON: 1,"<id>","<url>",<port>[,<tag>]` | **Not readiness** — see below. Note: the docs' example for this is wrong — the real fields are client_id and url, not username/password |
-| `AT#XMQTTSUB="<topic>",<qos>` | `OK` then `#XMQTTEVT: 7,<r>` | One at a time — SUBACK carries no topic to correlate on |
-| `AT#XMQTTUNSUB="<topic>"` | `OK` then `#XMQTTEVT: 8,<r>` | |
-| `AT#XMQTTPUB="<topic>","<msg>",<qos>,<retain>` | `OK` | Inline. Only safe if the payload has no `,` `"` CR or LF |
-| `AT#XMQTTPUB="<topic>","",<qos>,<retain>` | `OK`, enters data mode | Then payload, then terminator |
-| `AT#XMQTTPUB="<topic>","",<qos>,<retain>,<len>` | `OK`, enters data mode | Counted — no terminator, no escaping. **Needs upstream PR #381** (cherry-picked in `nrf9151_build_setup.py`) |
+| Command | Response | `ERROR` means | Notes |
+|---|---|---|---|
+| `AT#XMQTTCFG="<id>",<keepalive>,<clean>` | `OK` | **Already connected**, or bad `<clean>` | Before connecting. `<clean>`: `0` persistent, `1` clean |
+| `AT#XMQTTCFG?` | `#XMQTTCFG: "<id>",<ka>,<clean>` | — | |
+| `AT#XMQTTCON=1,"<user>","<pass>","<host>",<port>[,<sec_tag>]` | `OK` then `#XMQTTEVT: 0,<r>` | DNS failed, TCP/TLS failed, or already connected | `1` = IPv4, `2` = IPv6. Add `<sec_tag>` for TLS (port 8883) |
+| `AT#XMQTTCON=0` | `OK` then `#XMQTTEVT: 1,<r>` | Not connected, **or** the link was already dead — teardown still happened | Disconnect |
+| `AT#XMQTTCON?` | `#XMQTTCON: 0` **or** `#XMQTTCON: 1,"<id>","<url>",<port>[,<tag>]` | — | **Not readiness** — see below. Note: the docs' example for this is wrong — the real fields are client_id and url, not username/password |
+| `AT#XMQTTSUB="<topic>",<qos>` | `OK` then `#XMQTTEVT: 7,<r>` | Not CONNACKed — *yet*, or *any more* | One at a time — SUBACK carries no topic to correlate on |
+| `AT#XMQTTUNSUB="<topic>"` | `OK` then `#XMQTTEVT: 8,<r>` | Not CONNACKed — *yet*, or *any more* | |
+| `AT#XMQTTPUB="<topic>","<msg>",<qos>,<retain>` | `OK` | Not CONNACKed, or bad `<qos>`/`<retain>` | Inline. Only safe if the payload has no `,` `"` CR or LF |
+| `AT#XMQTTPUB="<topic>","",<qos>,<retain>` | `OK`, enters data mode | as above | Then payload, then terminator |
+| `AT#XMQTTPUB="<topic>","",<qos>,<retain>,<len>` | `OK`, enters data mode | as above, plus `<len>` > `CONFIG_SM_DATAMODE_BUF_SIZE` | Counted — no terminator, no escaping. **Needs upstream PR #381** (cherry-picked in `nrf9151_build_setup.py`) |
+
+**It is always a bare `ERROR`, never `+CME ERROR`.** `sm_at_cb_wrapper()` only
+reconstructs `+CME`/`+CMS ERROR` when a handler returns a *positive* value (the
+`nrf_modem_at_cmd()` encoded-error convention, used by proxying commands like
+`AT#XSMS`). Every MQTT handler returns a negative errno, which never reaches
+the wire — the `-ENOTCONN`/`-EINVAL`/`-EISCONN` values named above are internal
+to the firmware and useful only for reading the source. `AT+CMEE=1` does not
+change this; it governs libmodem's own `AT+`/`AT%` errors, not SM's `#X`
+handlers.
+
+**"Not CONNACKed — yet, or any more"** is the one ambiguity that matters.
+Distinguish by whether you have seen `#XMQTTEVT: 0,0` for the *current* connect
+attempt: before that it is the dead zone and you wait; after it, the session is
+gone and it is a genuine "reconnect now" signal. A publish that fails on a dead
+socket also *causes* the teardown (`client_write()` →
+`mqtt_client_disconnect(notify=true)`), so expect `#XMQTTEVT: 1,<errno>` right
+behind the `ERROR`.
 
 **No client-side MQTT state.** The firmware does not retransmit or track
 packet IDs — QoS > 0 gets you an ack notification, not delivery. Documented
@@ -124,18 +141,7 @@ this state.**
 
 It is bounded: with no CONNACK, poll times out after the keepalive,
 `mqtt_live()` → `mqtt_ping()` fails `-ENOTCONN`, the thread aborts the
-connection and emits `#XMQTTEVT: 1,-103`. So the hang is ~1 keepalive.
-
-### `ERROR` from `SUB`/`UNSUB`/`PUB`
-
-`-ENOTCONN`, which means either **not yet connected** (dead zone above) or
-**no longer connected**. Distinguish by whether you have seen
-`#XMQTTEVT: 0,0` for the current attempt — it is only a "reconnect now"
-signal after that.
-
-A publish that fails on a dead socket also *causes* the teardown
-(`client_write()` → `mqtt_client_disconnect(notify=true)`), so expect
-`#XMQTTEVT: 1,<errno>` right behind the `ERROR`.
+connection and emits `#XMQTTEVT: 1,-113`. So the hang is ~1 keepalive.
 
 ### Timeouts and blocking
 
@@ -184,6 +190,34 @@ use the reset ladder — a graceful disconnect is not reliable there.
 want on every reconnect. Config → connect belongs on the disconnected path
 only, never in the steady-state poll.
 
+### Session state: use clean sessions
+
+**`session_present` from CONNACK is unreachable.** Zephyr decodes it into
+`evt->param.connack.session_present_flag`, but `sm_at_mqtt.c` builds the URC
+from `evt->type` and `evt->result` only, so `#XMQTTEVT: 0,0` carries no hint
+either way, and no other command exposes it. With `<clean>=0` there is no way
+to know whether the broker still holds our subscriptions.
+
+The workaround is to **re-subscribe unconditionally on every connect**.
+SUBSCRIBE is idempotent — resubscribing an existing topic just replaces the
+subscription and its granted QoS. Since SUBACK carries no correlation info we
+serialize them anyway, so the cost is one round trip per topic per reconnect.
+
+But we use `<clean>=1`, for two reasons beyond simplicity:
+
+* A persistent session buys nothing on the uplink side. The firmware keeps no
+  packet-ID state and never retransmits, so nothing protects our telemetry
+  across a disconnect either way.
+* Its one real benefit — the broker queuing QoS ≥ 1 downlink while we are
+  offline — is a hazard here. Return from a long outage and the whole backlog
+  arrives at once, into a firmware that streams inbound payloads with no size
+  bound, through a URC ring that **resets itself on overflow**. A stale command
+  from hours ago is rarely worth executing anyway.
+
+Keep the stable IMEI client ID regardless: it keeps broker-side logging and ACLs
+sane, and makes a reconnect displace our own stale connection instead of
+accumulating ghosts.
+
 ### Data mode
 
 Entered by any `#XMQTTPUB` with an empty `<msg>`. Exit by sending the
@@ -214,15 +248,29 @@ hack can go away.
 
 These are Zephyr's `mqtt_evt_type` values, emitted for *every* MQTT event:
 
-| | | | |
-|---|---|---|---|
-| `0` CONNACK | `1` DISCONNECT | `2` PUBLISH (inbound) | `3` PUBACK (QoS 1) |
-| `4` PUBREC (QoS 2) | `5` PUBREL (QoS 2) | `6` PUBCOMP (QoS 2) | `7` SUBACK |
-| `8` UNSUBACK | `9` PINGRESP | | |
+| `<type>` | Fires when | `<result>` |
+|---|---|---|
+| `0` CONNACK | broker answered our CONNECT | **Special — positive on failure.** See below |
+| `1` DISCONNECT | session ended, for any reason | `0` if *we* asked (`#XMQTTCON=0`); otherwise the negative errno that killed it. **The only event where a nonzero result is informational rather than fatal** |
+| `2` PUBLISH | inbound message, after `#XMQTTMSG` | `0` in practice. Nonzero only if the packet header failed to decode — in which case the payload never arrived intact and the connection dies |
+| `3` PUBACK | our QoS 1 publish was acked | decode status; `0` in practice |
+| `4` PUBREC | QoS 2, step 2 of 4 | decode status; `0` in practice |
+| `5` PUBREL | QoS 2, step 3 of 4 | decode status; `0` in practice |
+| `6` PUBCOMP | QoS 2, step 4 of 4 | decode status; `0` in practice |
+| `7` SUBACK | broker answered a SUBSCRIBE | decode status only — **can lie**, see below |
+| `8` UNSUBACK | broker answered an UNSUBSCRIBE | decode status; `0` in practice |
+| `9` PINGRESP | keepalive ping answered | **always `0`** — `mqtt_rx.c` never assigns a result for this type |
 
 At QoS 0 you only ever see `0`, `1`, `2`, `7`, `8`, `9`. `9` arrives once per
 keepalive interval and is the cheapest proof the whole path (radio → PDN →
 broker) is alive.
+
+**The simplifying rule:** for every type *except* `1`, a nonzero `<result>` is
+fatal. All of `2`–`9` get their result from a decode function, and `client_read()`
+tears the connection down on any negative return from `mqtt_handle_rx()`. So a
+nonzero result on those is always followed by `#XMQTTEVT: 1,<errno>`. Treat
+"nonzero on anything but DISCONNECT" as "the connection is gone" and don't
+bother decoding further.
 
 **CONNACK (`0`) breaks the errno rule.** On failure `<result>` is the *positive*
 MQTT return code, not an errno: `1` bad protocol version, `2` identifier
@@ -230,13 +278,33 @@ rejected, `3` server unavailable, `4` bad credentials, `5` not authorized.
 `4` and `5` mean stop retrying — the config is wrong. `3` means back off.
 A rejected connect always arrives as **two** URCs: `#XMQTTEVT: 0,<code>`
 followed by `#XMQTTEVT: 1,-111` (`-ECONNREFUSED`) from the library's own
-teardown.
+teardown. (A malformed CONNACK gives a *negative* result instead, so sign is
+what distinguishes "broker said no" from "packet was garbage".)
 
 **SUBACK (`7`) can lie.** `<result>` is only the *decode* status. The per-topic
 return codes land in `param.suback.return_codes`, which `sm_at_mqtt.c` never
 reads — so a broker-refused subscription (`0x80`) and a QoS downgrade both
 report `#XMQTTEVT: 7,0`, identical to success. If a subscription being live
 actually matters, prove it with an application-level round trip.
+
+### Which errno?
+
+**Zephyr/newlib values, not Linux ones.** They come from the Zephyr SDK
+toolchain's `sys/errno.h` (matching `zephyr/lib/libc/minimal/include/errno.h`),
+which is Linux-*flavored* but diverges exactly where it hurts — the socket
+range. Nothing here is 3GPP; those numbers only show up in `+CME ERROR` and
+`+CEER`, which this path never produces.
+
+| | | | |
+|---|---|---|---|
+| `11` EAGAIN | `22` EINVAL | `71` EPROTO | `110` ESHUTDOWN |
+| `111` ECONNREFUSED | `113` ECONNABORTED | `114` ENETUNREACH | `115` ENETDOWN |
+| `116` ETIMEDOUT | `122` EMSGSIZE | `126` ENETRESET | `127` EISCONN |
+| `128` ENOTCONN | | | |
+
+The traps: **ECONNABORTED is 113, not Linux's 103** (this is what a firmware-side
+`mqtt_abort()` reports, so it is the one you will see most), ENOTCONN is 128 not
+107, and ENETRESET is 126 not 102. Do not decode these with a host `errno.h`.
 
 ### Inbound message framing
 
