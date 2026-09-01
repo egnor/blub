@@ -13,15 +13,20 @@ async def emulated_test_output(request, timeout=30.0) -> list[str]:
     RP2040 simulator, and returns lines printed to `Serial1` (aka uart0)."""
 
     sketch_dir = Path(request.path).parent
-    if (output_dir := sketch_dir / "output.tmp").is_dir():
-        shutil.rmtree(output_dir)
+    module_name = request.module.__name__.split(".")[-1]
+    build_dir = sketch_dir / f"{module_name}.tmp"
 
     print("\n🏗️ Building:", sketch_dir.name)
-    args = ["arduino-cli", "compile", "--output-dir=output.tmp"]
-    proc = await asyncio.create_subprocess_exec(*args, cwd=str(sketch_dir))
+    proc = await asyncio.create_subprocess_exec(
+        "arduino-cli",
+        "compile",
+        f"--build-path={build_dir}/work",
+        f"--output-dir={build_dir}",
+        cwd=str(sketch_dir),
+    )
     assert (await proc.wait()) == 0, "arduino-cli compile failed"
 
-    (uf2,) = output_dir.glob("*.uf2")
+    (uf2,) = build_dir.glob("*.uf2")
     print("\n▶️ Emulating:", uf2.name)
     args = (EMULATOR_PATH, str(uf2))
     proc = await asyncio.create_subprocess_exec(*args, stdout=PIPE)
@@ -31,7 +36,7 @@ async def emulated_test_output(request, timeout=30.0) -> list[str]:
         failures: list[str] = []
         async with asyncio.TaskGroup() as tasks:
             tasks.create_task(asyncio.wait_for(proc.wait(), timeout=timeout))
-            with open(output_dir / "serial_log.txt", "wb", buffering=0) as log:
+            with open(build_dir / "serial_log.txt", "wb", buffering=0) as log:
                 async for line in proc.stdout:
                     log.write(line)
                     print(text := line.decode().rstrip())
