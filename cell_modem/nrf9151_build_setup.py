@@ -20,6 +20,34 @@ APP_REPO_REV = "6dc6a397836465fcff6b5d9de9b604e7f33bb753"
 UPSTREAM_REPO_URL = "https://github.com/nrfconnect/ncs-serial-modem"
 UPSTREAM_CHERRY_PICKS = ["refs/pull/381/head"]
 
+# Fixes with no cherry-pickable upstream commit, as (message, unified diff).
+# `git apply` fails loudly if the context stops matching, which is what we want:
+# once the fork rebases past the fix, the build breaks and the entry comes out.
+LOCAL_PATCHES = [
+    (
+        "app: mqtt: send the #XMQTTMSG header before the payload",
+        # Inside sm_at_host_lock() the pipe is not idle, so urc_send_to()
+        # queues and the header flushes *after* the topic and payload bytes
+        # it describes, which is unparseable. rsp_send_to() sends immediately.
+        # Regression from nrfconnect 62061b1; fixed upstream in 7c1cb92 as
+        # part of a work-queue refactor we do not want to carry.
+        """\
+diff --git a/app/src/sm_at_mqtt.c b/app/src/sm_at_mqtt.c
+--- a/app/src/sm_at_mqtt.c
++++ b/app/src/sm_at_mqtt.c
+@@ -97,7 +97,7 @@ static int handle_mqtt_publish_evt(struct mqtt_client *const c, const struct mqt
+ 	 * promise is not kept. This deviates from MQTT v3.1.1.
+ 	 */
+ 	sm_at_host_lock(ctx.pipe);
+-	urc_send_to(ctx.pipe, "\\r\\n#XMQTTMSG: %d,%d\\r\\n",
++	rsp_send_to(ctx.pipe, "\\r\\n#XMQTTMSG: %d,%d\\r\\n",
+ 		evt->param.publish.message.topic.topic.size,
+ 		evt->param.publish.message.payload.len);
+ 	data_send(ctx.pipe, evt->param.publish.message.topic.topic.utf8,
+""",
+    ),
+]
+
 NCS_VERSION = "v3.4.0"  # toolchain bundle; must suit the app
 SDK_MANAGER_VERSION = "1.16.1"  # nrfutil plugin (nrfutil itself is unpinnable)
 
@@ -55,11 +83,14 @@ def main():
         ok_logging_setup.exit("%s has uncommitted changes", app_dir)
     run("git", "-C", app_dir, "fetch", "origin", APP_REPO_REV)
     run("git", "-C", app_dir, "checkout", "--quiet", "--detach", APP_REPO_REV)
+    id = parser.prog or Path(__file__).name
+    id_args = ("-c", f"user.name={id}", "-c", f"user.email={id}@invalid")
     for ref in UPSTREAM_CHERRY_PICKS:
         run("git", "-C", app_dir, "fetch", UPSTREAM_REPO_URL, ref)
-        id = parser.prog or Path(__file__).name
-        id_args = ("-c", f"user.name={id}", "-c", f"user.email={id}@invalid")
         run("git", "-C", app_dir, *id_args, "cherry-pick", "FETCH_HEAD")
+    for message, diff in LOCAL_PATCHES:
+        run("git", "-C", app_dir, "apply", "-", input=diff, text=True)
+        run("git", "-C", app_dir, *id_args, "commit", "--all", "-m", message)
 
     logging.info("\n▶️ Workspace for west (Zephyr OS build tool)")
     env_args = ("nrfutil", "sdk-manager", "toolchain", "env")

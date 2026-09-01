@@ -252,10 +252,10 @@ These are Zephyr's `mqtt_evt_type` values, emitted for *every* MQTT event:
 |---|---|---|
 | `0` CONNACK | broker answered our CONNECT | **Special — positive on failure.** See below |
 | `1` DISCONNECT | session ended, for any reason | `0` if *we* asked (`#XMQTTCON=0`); otherwise the negative errno that killed it. **The only event where a nonzero result is informational rather than fatal** |
-| `2` PUBLISH | inbound message, after `#XMQTTMSG` | `0` in practice. Nonzero only if the packet header failed to decode — in which case the payload never arrived intact and the connection dies |
+| `2` PUBLISH | inbound message, with `#XMQTTMSG` | **always `0`** — the handler overwrites `evt->result` with `handle_mqtt_publish_evt()`'s unconditional `0`, so a decode failure never surfaces here (it still kills the connection, so watch for `1`) |
 | `3` PUBACK | our QoS 1 publish was acked | decode status; `0` in practice |
-| `4` PUBREC | QoS 2, step 2 of 4 | decode status; `0` in practice |
-| `5` PUBREL | QoS 2, step 3 of 4 | decode status; `0` in practice |
+| `4` PUBREC | QoS 2, step 2 of 4 | **not** the decode status — the result of the PUBREL the firmware sends back |
+| `5` PUBREL | QoS 2, step 3 of 4 | **not** the decode status — the result of the PUBCOMP the firmware sends back |
 | `6` PUBCOMP | QoS 2, step 4 of 4 | decode status; `0` in practice |
 | `7` SUBACK | broker answered a SUBSCRIBE | decode status only — **can lie**, see below |
 | `8` UNSUBACK | broker answered an UNSUBSCRIBE | decode status; `0` in practice |
@@ -308,7 +308,12 @@ The traps: **ECONNABORTED is 113, not Linux's 103** (this is what a firmware-sid
 
 ### Inbound message framing
 
-`#XMQTTMSG` is **not line-oriented**. After the header line comes:
+`#XMQTTMSG` is **not line-oriented**. The payload is raw and may contain CR,
+LF, `"`, or NUL. Read it by **byte count**, never by line. Payload size is
+unbounded by the firmware — it streams straight through — so cap it
+client-side and discard the excess.
+
+The documented order is:
 
 ```
 #XMQTTMSG: <topic_len>,<msg_len>CRLF
@@ -317,9 +322,78 @@ The traps: **ECONNABORTED is 113, not Linux's 103** (this is what a firmware-sid
 #XMQTTEVT: 2,0
 ```
 
-The payload is raw and may contain CR, LF, `"`, or NUL. Read it by **byte
-count**, never by line. Payload size is unbounded by the firmware — it streams
-straight through — so cap it client-side and discard the excess.
+**⚠ On our pinned build the header comes LAST.** Confirmed on hardware —
+subscribing to `test` and publishing `test` to it produces:
+
+```
+test                                     <- topic, no leading delimiter
+test                                     <- payload
+#XMQTTMSG: 4,4                           <- header, after the data it describes
+#XMQTTEVT: 2,0
+```
+
+Why: `handle_mqtt_publish_evt()` takes `sm_at_host_lock()`, which increments
+`executing_lock`; `is_idle_ctx()` requires that to be `0`; and `urc_send_to()`
+on a pipe-specific ctx appends to `ctx->buffered_urcs`, flushing only when idle.
+So the header is *queued* inside the lock while topic and payload go straight
+out via `data_send()`, and the header lands at unlock.
+
+This is unparseable in general, not merely awkward. The data block has **no
+leading delimiter** — the topic just starts — so without a header first there is
+nothing to detect the start of a message, and since payloads are raw, one
+containing `\r\n#XMQTTEVT: 2,0` is indistinguishable from the real thing.
+Trivial payloads only *look* readable.
+
+**Provenance:** a regression, not code that never worked. `git log -L` on the
+line: the NCS import (`0b6369c`) had `rsp_send()` — immediate, correct. Nordic's
+`62061b1` *"app: Allow targeting responses to a pipe"* (3 Mar 2026) swept it to
+`urc_send_to()`. That same commit is the one that *defines* `rsp_send_to()`, so
+the correct replacement existed in the changeset that broke it. Upstream
+`7c1cb92` (Aug 2026) puts it back.
+
+**Local fix:** one line in `handle_mqtt_publish_evt()`, `urc_send_to` →
+`rsp_send_to` for the `#XMQTTMSG` line, alongside the existing PR #381
+cherry-pick. Do not cherry-pick `7c1cb92` for this — the fix is entangled with a
+poll-callback rewrite and a malloc refactor.
+
+## Upstream drift
+
+We are pinned to the circuitdojo fork. Nordic
+[`7c1cb92`](https://github.com/nrfconnect/ncs-serial-modem/commit/7c1cb929e417f22ec5396f5733e591da00c26006)
+(*app: Refactor MQTT to use work queue and dynamic memory*, Aug 2026) rewrites
+`sm_at_mqtt.c`: the dedicated 2 KB polling thread becomes a one-shot `SO_POLLCB`
+callback dispatched onto `sm_work_q`, keepalive becomes a delayable work item,
+and buffers/strings move into a single `calloc`'d struct that exists only while
+connected. Not in the fork yet. Nothing here forces our hand — accept it in due
+course, but know what changes:
+
+**Fixes for us**
+
+* **The inbound framing bug above** (confirmed on hardware). The `#XMQTTMSG`
+  header switches back to `rsp_send_to()` so it precedes the payload. This is
+  the only reason to care about this commit at all, and it is cheaper to patch
+  locally.
+* **`#XMQTTCON=0` stops blocking.** `k_thread_join(..., K_SECONDS(CONFIG_MQTT_KEEPALIVE))`
+  is gone, replaced by `k_work_cancel_delayable()` and immediate teardown. The
+  60-second worst case in *Timeouts and blocking* disappears.
+
+**New behavior to watch for**
+
+* **`#XMQTTCON=1` gains `-ENOMEM`** — the connection struct is allocated per
+  connect. Another meaning for `ERROR`.
+* **A slow inbound payload holds the AT host lock across work invocations.**
+  On `-EAGAIN` the poll handler returns *still holding* `sm_at_host_lock()` and
+  re-arms. Framing stays atomic (good), but a large or stalled inbound message
+  can now delay our command responses. `mqtt_connection_abort()` has explicit
+  code to release the lock if the connection dies mid-drain.
+
+**Unchanged — everything else in this file still applies**
+
+The two notions of "connected", `#XMQTTCON?` reporting pre-CONNACK, the
+pending-CONNACK dead zone *including* the `disconnect_requested` poisoning, the
+keepalive backstop landing on `#XMQTTEVT: 1,-113`, bare `ERROR` never
+`+CME ERROR`, SUBACK unable to report broker refusal, and `session_present`
+still dropped on the floor.
 
 ## Reset ladder
 
