@@ -1,10 +1,25 @@
-/* Move the AT interface from uart0 (RP2040 USB) to uart1 (Feather TX/RX). */
+/*
+ * AT interface UART. Board defaults (fork commit 268e839) are:
+ *   uart0  P0.11/P0.10  RP2040 USB bridge   115200   <- ncs,sm-uart
+ *   uart1  P0.24/P0.23  Feather TX/RX pins  1000000  <- zephyr,console + shell
+ *
+ * Currently on the board default, so AT goes over the onboard USB serial port
+ * and no external wiring is needed.
+ *
+ * To move AT to the Feather TX/RX header pins, uncomment BOTH lines below.
+ * The console has to move at the same time: sm_log.c binds to the
+ * zephyr,console UART purely from devicetree (CONFIG_UART_CONSOLE=n does not
+ * disable it) and sm_log_init() PM-suspends it, which returns -EAGAIN and
+ * reports "INIT ERROR" when that UART is also the AT host with async RX up.
+ */
 / {
 	chosen {
-		ncs,sm-uart = &uart1;
+		/* ncs,sm-uart = &uart1; */
+		/* zephyr,console = &uart0; */
 	};
 };
 
+/* Header pins run at the modem-trace default of 1 Mbaud otherwise. */
 &uart1 {
 	status = "okay";
 	current-speed = <115200>;
