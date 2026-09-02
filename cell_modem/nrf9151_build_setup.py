@@ -18,14 +18,9 @@ from subprocess import CalledProcessError
 APP_REPO_URL = "https://github.com/circuitdojo/ncs-serial-modem"
 APP_REPO_REV = "268e8396c51bfeae77e1fffafbce022487d2fa43"
 UPSTREAM_REPO_URL = "https://github.com/nrfconnect/ncs-serial-modem"
-# Both empty since the fork rebased onto upstream 8268456 (Sep 2026), which
-# carries the counted AT#XMQTTPUB payload (8d545f6, was PR 381) and the
-# #XMQTTMSG header-ordering fix (7c1cb92). Machinery kept for the next time.
-UPSTREAM_CHERRY_PICKS = []  # refs to cherry-pick from UPSTREAM_REPO_URL
 
-# Fixes with no cherry-pickable upstream commit, as (message, unified diff).
-# `git apply` fails loudly if the context stops matching, which is what we want:
-# once the fork rebases past the fix, the build breaks and the entry comes out.
+# changes to apply from git or patch locally, currently empty
+UPSTREAM_CHERRY_PICKS = []  # refs to cherry-pick from UPSTREAM_REPO_URL
 LOCAL_PATCHES = []
 
 NCS_VERSION = "v3.4.0"  # toolchain bundle; must suit the app
