@@ -11,4 +11,4 @@ profiles:
       - dir: ../../config_lib
       - dir: ../test_lib
       - Embedded Template Library ETL (20.48.1)
-      - dir: ../../../ok_arduino_logging
+      - OK Logging (0.5)

@@ -27,23 +27,23 @@ mise run cell-modem-clean ::: cell-modem-build
 ```
 
 To REALLY start from
-scratch and download the SDK again, delete `dev.tmp/ncs` and re-build.
+scratch and download the SDK again, delete `dev.tmp/nordic` and re-build.
 
 To noodle around in the Nordic SDK environment:
 
 ```sh
-cd dev.tmp/ncs/workspace/circuitdojo-ncs-serial-modem/app
+cd dev.tmp/nordic/workspace/circuitdojo-ncs-serial-modem/app
 west build  # etc.
 ```
 
 Paths of note:
 
 - `mise.toml` - sets environment variables & defines build tasks
-- `dev.tmp/ncs` (`$NRFUTIL_HOME`) - root of everything cell-modem related
-- `dev.tmp/ncs/workspace` - `west` (Zephyr build tool) working tree
-- `dev.tmp/ncs/workspace/mise.local.toml` - SDK env (see nrf9151_build_setup.py)
-- `dev.tmp/ncs/workspace/circuitdojo-ncs-serial-modem` - app checkout
-- `dev.tmp/ncs/workspace/circuitdojo-ncs-serial-modem/app` - main app source
+- `dev.tmp/nordic` (`$NRFUTIL_HOME`) - root of everything cell-modem related
+- `dev.tmp/nordic/workspace` - `west` (Zephyr build tool) working tree
+- `dev.tmp/nordic/workspace/mise.local.toml` - SDK env (see nrf9151_build_setup.py)
+- `dev.tmp/nordic/workspace/circuitdojo-ncs-serial-modem` - app checkout
+- `dev.tmp/nordic/workspace/circuitdojo-ncs-serial-modem/app` - main app source
 
 ## Flashing
 
@@ -62,7 +62,7 @@ mise run cell-modem-flash-app
 Or, you can flash the app slot with the Nordic SDK:
 
 ```sh
-cd dev.tmp/ncs/workspace/circuitdojo-ncs-serial-modem/app
+cd dev.tmp/nordic/workspace/circuitdojo-ncs-serial-modem/app
 west flash --runner=probe-rs --domain=app
 # WARNING - do not attempt whole-chip flash this way - see below
 ```
@@ -143,7 +143,7 @@ or install different tweaks.
 
 - `cell_modem/nrf9151_build_setup.py` pins a commit of the `ncs-serial-modem` fork and
   picks a Nordic toolchain bundle version (`$NCS_VERSION`)
-- `ncs-serial-modem` in turn pins NCS itself (`dev.tmp/ncs/workspace/nrf`)
+- `ncs-serial-modem` in turn pins NCS itself (`dev.tmp/nordic/workspace/nrf`)
   via `west.yml`
 - NCS and toolchain versions must be compatible, eg. for NCS commit
   `v3.4.0-rc1-87-g1c36e48027` we use toolchain `v3.4.0`.
