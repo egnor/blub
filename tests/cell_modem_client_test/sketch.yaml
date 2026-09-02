@@ -7,8 +7,8 @@ profiles:
       - platform: rp2040:rp2040 (3.8.0)
         platform_index_url: https://github.com/earlephilhower/arduino-pico/releases/download/global/package_rp2040_index.json
     libraries:
-      - dir: ../../base_lib
       - dir: ../../cell_modem
+      - dir: ../../config_lib
       - dir: ../test_lib
       - Embedded Template Library ETL (20.48.1)
       - dir: ../../../ok_arduino_logging
