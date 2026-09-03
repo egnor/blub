@@ -1,6 +1,7 @@
 [tools]
 arduino = "1.5.1"
-node = "latest"                                                                # runs the RP2040 emulator, see tests/emulator/README.md
+# runs the RP2040 emulator, see tests/emulator/README.md
+node = "latest"
 python = "3.12"
 uv = "0.12"
 "github:probe-rs/probe-rs" = { matching = "probe-rs-tools", version = "0.32" }
