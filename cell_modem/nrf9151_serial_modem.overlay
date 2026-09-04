@@ -9,8 +9,8 @@
  */
 / {
 	chosen {
-		/* ncs,sm-uart = &uart1; */
-		/* zephyr,console = &uart0; */
+		ncs,sm-uart = &uart1;
+		zephyr,console = &uart0;
 	};
 };
 
