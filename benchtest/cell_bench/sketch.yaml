@@ -7,8 +7,11 @@ profiles:
       - platform: rp2040:rp2040 (6.0.0)
         platform_index_url: https://github.com/earlephilhower/arduino-pico/releases/download/global/package_rp2040_index.json
     libraries:
+      - Embedded Template Library ETL (20.48.1)
+      - Everyday Pixel Fonts (0.1)
+      - OK Logging (0.5)
+      - OK Little Layout (0.3)
+      - OK Micro Dock (0.3)
+      - U8g2 (2.36.19)
       - dir: ../../cell_modem
       - dir: ../../config_lib
-      - dir: ../test_lib
-      - Embedded Template Library ETL (20.48.1)
-      - OK Logging (0.5)

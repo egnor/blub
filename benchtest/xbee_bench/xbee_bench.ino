@@ -10,7 +10,7 @@
 #include "src/xbee_socket_keeper.h"
 #include "src/xbee_status_monitor.h"
 
-static const OkLoggingContext OK_CONTEXT("xbee_test");
+static const OkLoggingContext OK_CONTEXT("xbee_bench");
 
 static XBeeStatusMonitor* monitor = nullptr;
 static XBeeSocketKeeper* keeper = nullptr;

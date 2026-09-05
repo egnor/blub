@@ -54,14 +54,14 @@ dir = "{{cwd}}"
 [tasks.arduino-u]
 alias = "u"
 description = "Upload Arduino sketch"
-run = 'port={{vars.port_arg}} && arduino-cli upload --port="$port"'
+run = 'arduino-cli upload'
 dir = "{{cwd}}"
 wait_for = "c"
 
 [tasks.arduino-m]
 alias = "m"
 description = "Monitor Arduino sketch"
-run = 'port={{vars.port_arg}} && arduino-cli monitor --port="$port"'
+run = 'okterm RP2040'
 dir = "{{cwd}}"
 wait_for = "u"
 raw = true
@@ -112,5 +112,3 @@ run = "probe-rs reset"
 
 [vars]
 cell_modem_app_dir = "dev.tmp/nordic/workspace/circuitdojo-ncs-serial-modem/app"
-uf2_dir = "/media/{{env.USER}}/RPI-RP2"
-port_arg = "$(okserial -n1 RP2040 || ls -d {{vars.uf2_dir|quote}})"

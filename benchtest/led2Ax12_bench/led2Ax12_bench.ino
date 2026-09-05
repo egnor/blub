@@ -5,7 +5,7 @@
 
 #include "src/blub_station.h"
 
-static const OkLoggingContext OK_CONTEXT("led_driver_test");
+static const OkLoggingContext OK_CONTEXT("led2Ax12_bench");
 static Adafruit_PWMServoDriver pwm;
 
 static void read_command() {

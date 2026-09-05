@@ -5,7 +5,7 @@
 
 #include "src/blub_station.h"
 
-static const OkLoggingContext OK_CONTEXT("magneto_test");
+static const OkLoggingContext OK_CONTEXT("magneto_bench");
 static Adafruit_ADS1115 adc_a;
 static Adafruit_ADS1115 adc_b;
 
