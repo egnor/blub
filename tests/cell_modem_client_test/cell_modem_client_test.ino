@@ -39,19 +39,24 @@ static void test_modem_client_setup() {
   fake_serial.read_buf = "+CGSN: \"490154203237518\"\r\nOK\r\n";
   client->poll();
 
-  VERIFY_A_OP_B_STR(write_buf, ==, "AT%CMNG=1,0,0\r\n");
+  VERIFY_A_OP_B_STR(write_buf, ==, "AT%CMNG=1,0,0\r\n");  // check certs
   write_buf.clear();
   fake_serial.read_buf = "OK\r\n";  // no certs initially
   client->poll();
 
-  VERIFY_A_OP_B_STR(write_buf, ==, "AT+CFUN=4\r\n");
+  VERIFY_A_OP_B_STR(write_buf, ==, "AT+CFUN=4\r\n");  // radio off (cert update)
   write_buf.clear();
-  fake_serial.read_buf = "OK\r\n";  // no certs initially
+  fake_serial.read_buf = "OK\r\n";
+  client->poll();
+
+  VERIFY_A_OP_B_STR(write_buf, ==, "AT%CMNG=3,0,0\r\n");  // delete cert
+  write_buf.clear();
+  fake_serial.read_buf = "OK\r\n";
   client->poll();
 
   VERIFY_A_OP_B_STR(
     write_buf, ==,
-    "AT%CMNG=0,0,0,\"-----BEGIN CERTIFICATE-----\r\n"
+    "AT%CMNG=0,0,0,\"-----BEGIN CERTIFICATE-----\r\n"  // write cert
     "MIIFazCCA1OgAwIBAgIRAIIQz7DSQONZRGPgu2OCiwAwDQYJKoZIhvcNAQELBQAw\r\n"
     "TzELMAkGA1UEBhMCVVMxKTAnBgNVBAoTIEludGVybmV0IFNlY3VyaXR5IFJlc2Vh\r\n"
     "cmNoIEdyb3VwMRUwEwYDVQQDEwxJU1JHIFJvb3QgWDEwHhcNMTUwNjA0MTEwNDM4\r\n"
@@ -88,46 +93,46 @@ static void test_modem_client_setup() {
   fake_serial.read_buf = "OK\r\n";
   client->poll();
 
-  VERIFY_A_OP_B_STR(write_buf, ==, "AT%CMNG=1,0,0\r\n");
+  VERIFY_A_OP_B_STR(write_buf, ==, "AT%CMNG=1,0,0\r\n");  // check certs again
   write_buf.clear();
   fake_serial.read_buf =
     "%CMNG: 0,0,\"4C99356C265EE06C0AE0502E74D38231263513726D001CFE28EA25E70AF2CC7F\"\r\n"
     "OK\r\n";
   client->poll();
 
-  VERIFY_A_OP_B_STR(write_buf, ==, "AT+CMEE=1\r\n");
+  VERIFY_A_OP_B_STR(write_buf, ==, "AT+CMEE=1\r\n");  // extended errors on
   write_buf.clear();
   fake_serial.read_buf = "OK\r\n";
   client->poll();
 
-  VERIFY_A_OP_B_STR(write_buf, ==, "AT%XPDNCFG=1\r\n");
+  VERIFY_A_OP_B_STR(write_buf, ==, "AT%XPDNCFG=1\r\n");  // always-on IP
   write_buf.clear();
   fake_serial.read_buf = "OK\r\n";
   client->poll();
 
-  VERIFY_A_OP_B_STR(write_buf, ==, "AT+CFUN=1\r\n");
+  VERIFY_A_OP_B_STR(write_buf, ==, "AT+CFUN=1\r\n");  // radio on
   write_buf.clear();
   fake_serial.read_buf = "OK\r\n";
   client->poll();
 
-  VERIFY_A_OP_B_STR(write_buf, ==, "AT+CEREG=3\r\n");
+  VERIFY_A_OP_B_STR(write_buf, ==, "AT+CEREG=3\r\n");  // reg notify on
   write_buf.clear();
   fake_serial.read_buf = "OK\r\n";
   client->poll();
 
-  VERIFY_A_OP_B_STR(write_buf, ==, "AT+CGEREP=1\r\n");
+  VERIFY_A_OP_B_STR(write_buf, ==, "AT+CGEREP=1\r\n");  // packet notify on
   write_buf.clear();
   fake_serial.read_buf = "OK\r\n";
   client->poll();
 
-  VERIFY_A_OP_B_STR(write_buf, ==, "AT%XMONITOR\r\n");
+  VERIFY_A_OP_B_STR(write_buf, ==, "AT%XMONITOR\r\n");  // get radio status
   write_buf.clear();
   fake_serial.read_buf = "%XMONITOR: 5,"
     "\"\",\"\",\"310260\",\"417B\",7,12,\"02C80005\",211,5035,49,31,"
     "\"\",\"11100000\",\"11100000\",\"01001001\"\r\nOK\r\n";
   client->poll();
 
-  VERIFY_A_OP_B_STR(write_buf, ==, "AT+CGPADDR\r\n");
+  VERIFY_A_OP_B_STR(write_buf, ==, "AT+CGPADDR\r\n");  // get IP status
   write_buf.clear();
   fake_serial.read_buf = "OK\r\n";
   client->poll();

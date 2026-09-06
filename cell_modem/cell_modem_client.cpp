@@ -135,18 +135,18 @@ class CellModemClientDef : public CellModemClient {
       } else if (cert_state == CertState::UNKNOWN) {
         output_line("AT%CMNG=1,0,0");  // 1=check slot=0 type=0=root
         state = CommandState::OK_WAIT;
-        cert_state = CertState::BLANK;  // unless updated by %CMNG: before OK
+        cert_state = CertState::INVALID;  // unless updated by %CMNG: before OK
         cert_radio_off = false;
-      } else if (cert_state != CertState::VALID && !cert_radio_off) {
-        output_line("AT+CFUN=4");  // turn off the radio before writing cert
+      } else if (cert_state == CertState::INVALID) {
+        output_line("AT+CFUN=4");  // turn off the radio before updating cert
         state = CommandState::OK_WAIT;
-        cert_radio_off = true;
-      } else if (cert_state == CertState::WRONG) {
+        cert_state = CertState::OK_TO_ERASE;
+      } else if (cert_state == CertState::OK_TO_ERASE) {
         output_line("AT%CMNG=3,0,0"); // 3=del slot=0 type=0=root
-        state = CommandState::OK_WAIT;
+        state = CommandState::OK_WAIT;  // returns OK even if slot was empty
         state_deadline = now + 5_s;  // allow time for NVM write
-        cert_state = CertState::BLANK;  // write after deleting
-      } else if (cert_state == CertState::BLANK) {
+        cert_state = CertState::OK_TO_WRITE;  // write after deleting
+      } else if (cert_state == CertState::OK_TO_WRITE) {
         output_line(AT_CMNG_SET_ROOT_CERT);
         state = CommandState::OK_WAIT;
         state_deadline = now + 5_s;  // allow time for NVM write
@@ -206,7 +206,7 @@ class CellModemClientDef : public CellModemClient {
     OK_WAIT,
   };
 
-  enum class CertState { UNKNOWN, BLANK, WRONG, VALID };
+  enum class CertState { UNKNOWN, INVALID, OK_TO_ERASE, OK_TO_WRITE, VALID };
 
   HardwareSerial* const serial;
   etl::string<128> const mqtt_server;
@@ -408,7 +408,7 @@ class CellModemClientDef : public CellModemClient {
           cert_state = CertState::VALID;
           OK_DETAIL("Root cert correct:\n  %.*s", sha.size(), sha.data());
         } else {
-          cert_state = CertState::WRONG;
+          cert_state = CertState::INVALID;
           OK_ERROR(
             "Root cert mismatch (updating):\n  expect: %s\n  actual: %.*s",
             ROOT_CERT_SHA256, sha.size(), sha.data()
