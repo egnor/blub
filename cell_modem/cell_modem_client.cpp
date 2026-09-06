@@ -12,6 +12,46 @@
 
 using namespace etl::chrono_literals;
 
+// ISRG Root X1 (https://letsencrypt.org/certificates/)
+static char const* const AT_CMNG_SET_ROOT_CERT =
+  "AT%CMNG=0,0,0,\""  // 0=set slot=0 type=0=root
+  "-----BEGIN CERTIFICATE-----\r\n"
+  "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\r\n"
+  "-----END CERTIFICATE-----\r\n"
+  "\"";
+
+// from "sha256sum" on the certificate above (including CR-LF newlines)
+static char const* const ROOT_CERT_SHA256 =
+  "4C99356C265EE06C0AE0502E74D38231263513726D001CFE28EA25E70AF2CC7F";
+
 static const OkLoggingContext OK_CONTEXT("cell_modem_client");
 
 class CellModemClientDef : public CellModemClient {
@@ -52,9 +92,10 @@ class CellModemClientDef : public CellModemClient {
     }
 
     auto const now = etl::chrono::steady_clock::now();
-    if (state != State::IDLE && now >= state_deadline) {
+    if (state != CommandState::IDLE && now >= state_deadline) {
       OK_ERROR("Command timeout (state=%d), polling", state);
-      state = State::IDLE;
+      out_buf.append("\r\n!\"#$%\r\n");  // unstick modem parser state
+      state = CommandState::IDLE;
       next_periodic = {};  // Poll until we get a response
     }
 
@@ -73,53 +114,77 @@ class CellModemClientDef : public CellModemClient {
       periodic_step = 0;
     }
 
-    if (state == State::IDLE && out_complete >= out_buf.size()) {
+    if (state == CommandState::IDLE && out_complete >= out_buf.size()) {
       state_deadline = now + 1_s;
+
+      // hardware ID (once at startup)
       if (status.hardware.empty()) {
         output_line("AT+CGMM");  // modem model
-        state = State::AT_CGMM_WAIT;
+        state = CommandState::AT_CGMM_WAIT;
       } else if (status.versions[0].empty()) {
         output_line("AT+CGMR");  // modem revision
-        state = State::AT_CGMR_WAIT;
+        state = CommandState::AT_CGMR_WAIT;
       } else if (status.versions[1].empty()) {
         output_line("AT#XSMVER");  // extended serial modem versions
-        state = State::OK_WAIT;
+        state = CommandState::OK_WAIT;
       } else if (status.imeisv.empty()) {
         output_line("AT+CGSN=2");  // get IMEI
-        state = State::OK_WAIT;
+        state = CommandState::OK_WAIT;
+
+        // cert state (once at startup)
+      } else if (cert_state == CertState::UNKNOWN) {
+        output_line("AT%CMNG=1,0,0");  // 1=check slot=0 type=0=root
+        state = CommandState::OK_WAIT;
+        cert_state = CertState::BLANK;  // unless updated by %CMNG: before OK
+        cert_radio_off = false;
+      } else if (cert_state != CertState::VALID && !cert_radio_off) {
+        output_line("AT+CFUN=4");  // turn off the radio before writing cert
+        state = CommandState::OK_WAIT;
+        cert_radio_off = true;
+      } else if (cert_state == CertState::WRONG) {
+        output_line("AT%CMNG=3,0,0"); // 3=del slot=0 type=0=root
+        state = CommandState::OK_WAIT;
+        state_deadline = now + 5_s;  // allow time for NVM write
+        cert_state = CertState::BLANK;  // write after deleting
+      } else if (cert_state == CertState::BLANK) {
+        output_line(AT_CMNG_SET_ROOT_CERT);
+        state = CommandState::OK_WAIT;
+        state_deadline = now + 5_s;  // allow time for NVM write
+        cert_state = CertState::UNKNOWN;  // re-verify after write
+
+        // periodic poll steps
       } else if (periodic_step == 0) {
         output_line("AT+CMEE=1");  // enable extended errors
-        state = State::OK_WAIT;
+        state = CommandState::OK_WAIT;
         ++periodic_step;
       } else if (periodic_step == 1) {
         output_line("AT%XPDNCFG=1");  // always-on packet network
-        state = State::OK_WAIT;
+        state = CommandState::OK_WAIT;
         ++periodic_step;
       } else if (periodic_step == 2) {
         output_line("AT+CFUN=1");  // turn on the radio and look for networks
-        state = State::OK_WAIT;
+        state = CommandState::OK_WAIT;
         ++periodic_step;
       } else if (periodic_step == 3) {
         output_line("AT+CEREG=3");  // network status notifications (after CFUN)
-        state = State::OK_WAIT;
+        state = CommandState::OK_WAIT;
         ++periodic_step;
       } else if (periodic_step == 4) {
         output_line("AT+CGEREP=1");  // IP status notifications (after CFUN)
-        state = State::OK_WAIT;
+        state = CommandState::OK_WAIT;
         ++periodic_step;
       } else if (periodic_step == 5) {
         output_line("AT%XMONITOR");  // network and radio status
-        state = State::OK_WAIT;
+        state = CommandState::OK_WAIT;
         ++periodic_step;
       } else if (periodic_step == 6) {
         output_line("AT+CGPADDR");  // get packet (IP) addresses
-        state = State::OK_WAIT;
+        state = CommandState::OK_WAIT;
         ++periodic_step;
       } else if (periodic_step == 7) {
         OK_DETAIL("🏁 Periodic poll complete (%d steps)", periodic_step);
         periodic_step = -1;
       }
-      // TODO: more outgoing
     }
 
     while (out_complete < out_buf.size() && serial->availableForWrite() > 0) {
@@ -133,10 +198,7 @@ class CellModemClientDef : public CellModemClient {
   using duration = etl::chrono::steady_clock::duration;
   using time_point = etl::chrono::steady_clock::time_point;
 
-  HardwareSerial* const serial;
-  etl::string<128> const mqtt_server;
-
-  enum class State {
+  enum class CommandState {
     IDLE,
     AT_CGMM_WAIT,
     AT_CGMR_WAIT,
@@ -144,16 +206,23 @@ class CellModemClientDef : public CellModemClient {
     OK_WAIT,
   };
 
-  State state = State::IDLE;
+  enum class CertState { UNKNOWN, BLANK, WRONG, VALID };
+
+  HardwareSerial* const serial;
+  etl::string<128> const mqtt_server;
+  CellModemStatus status;
+
+  CommandState state = CommandState::IDLE;
   time_point state_deadline = {};
   time_point next_periodic = {};
   int periodic_step = -1;
-  CellModemStatus status;
+
+  CertState cert_state = CertState::UNKNOWN;
+  bool cert_radio_off = false;  // radio turned off to update cert
 
   etl::string<8192> in_buf;
+  etl::string<8192> out_buf;  // needs to hold root cert
   int in_expect = 0;
-
-  etl::string<256> out_buf;
   int out_complete = 0;
 
   void output_line(etl::string_view line) {
@@ -163,10 +232,9 @@ class CellModemClientDef : public CellModemClient {
       out_buf.append("\r\n");
       out_complete = 0;
     } else {
-      OK_ERROR(
-        "Output overwrite:\n  old (%db sent): %.*s\n  new: %.*s",
-        out_complete, out_buf.size(), out_buf.data(),
-        line.size(), line.data()
+      OK_FATAL(  // Should never happen by logic
+        "Output overwrite: written=%d < buf=%db\n  new: %.*s",
+        out_complete, out_buf.size(), line.size(), line.data()
       );
     }
   }
@@ -188,7 +256,7 @@ class CellModemClientDef : public CellModemClient {
       } else {
         OK_ERROR("Modem reset (state=%d): %s", state, input_abbr().c_str());
       }
-      state = State::IDLE;
+      state = CommandState::IDLE;
       next_periodic = {};  // Initialize immediately
       status.running = true;
       status.registered = false;
@@ -197,7 +265,7 @@ class CellModemClientDef : public CellModemClient {
 
     if (eat(&rest, "#XMODEM:") || eat(&rest, "INIT ERROR")) {
       OK_ERROR("Modem fault (state=%d): %s", state, input_abbr().c_str());
-      state = State::FAILED;
+      state = CommandState::FAILED;
       state_deadline = etl::chrono::steady_clock::now() + 5_s;
       status.registered = false;
       status.failed = true;
@@ -209,20 +277,7 @@ class CellModemClientDef : public CellModemClient {
       eat(&rest, "+CMS ERROR:")
     ) {
       OK_ERROR("Modem error (state=%d): %s", state, input_abbr().c_str());
-      state = State::IDLE;
-      return;
-    }
-
-    //
-    // Generic success
-    //
-
-    if (eat(&rest, "OK")) {
-      if (!eat(&rest, "")) OK_ERROR("Bad OK: %s", input_abbr().c_str());
-      if (state != State::OK_WAIT) {
-        OK_ERROR("Unexpected OK (state=%d): %s", state, input_abbr().c_str());
-      }
-      state = State::IDLE;
+      state = CommandState::IDLE;
       return;
     }
 
@@ -341,6 +396,30 @@ class CellModemClientDef : public CellModemClient {
       return;
     }
 
+    if (eat(&rest, "%CMNG:")) {
+      int tag, type;
+      etl::string_view sha;
+      if (
+        eat_int(&rest, &tag) && eat(&rest, ",") &&
+        eat_int(&rest, &type) && eat(&rest, ",") &&
+        eat_quoted(&rest, &sha) && tag == 0 && type == 0
+      ) {
+        if (sha == ROOT_CERT_SHA256) {
+          cert_state = CertState::VALID;
+          OK_DETAIL("Root cert correct:\n  %.*s", sha.size(), sha.data());
+        } else {
+          cert_state = CertState::WRONG;
+          OK_ERROR(
+            "Root cert mismatch (updating):\n  expect: %s\n  actual: %.*s",
+            ROOT_CERT_SHA256, sha.size(), sha.data()
+          );
+        }
+      } else {
+        OK_ERROR("Bad %CMNG: %s", input_abbr().c_str());
+      }
+      return;
+    }
+
     if (eat(&rest, "%XMONITOR:")) {
       int reg;
       if (eat_int(&rest, &reg)) {
@@ -406,30 +485,42 @@ class CellModemClientDef : public CellModemClient {
     }
 
     if (rest.starts_with("+") || rest.starts_with("#")) {
-      OK_ERROR("Unexpected input: %s", input_abbr().c_str());
+      OK_ERROR("Unexpected reply (state=%d): %s", state, input_abbr().c_str());
       return;
     }
 
     //
-    // Responses identifiable only by .state
+    // "OK" success interpreted by .state
     //
 
-    if (state == State::AT_CGMM_WAIT) {
-      status.hardware = etl::trim_view_whitespace(rest);
-      if (status.hardware.empty()) status.hardware = "-";
-      state = State::OK_WAIT;
-    } else if (state == State::AT_CGMR_WAIT) {
-      status.versions[0] = etl::trim_view_whitespace(rest);
-      if (status.versions[0].empty()) status.versions[0] = "-";
-      state = State::OK_WAIT;
-    } else if (state == State::IDLE) {
-      OK_ERROR("Unexpected input: %s", input_abbr().c_str());
-    } else if (state == State::OK_WAIT) {
-      // Actual OK handled above
-      OK_ERROR("Bad reply: %s", input_abbr().c_str());  // Keep waiting for OK
-    } else {
-      OK_FATAL("Bad state: %d", state);
+    if (eat(&rest, "OK")) {
+      if (!eat(&rest, "")) OK_ERROR("Bad OK: %s", input_abbr().c_str());
+      if (state == CommandState::AT_CGMM_WAIT) {
+        status.hardware = "-";
+      } else if (state == CommandState::AT_CGMR_WAIT) {
+        status.versions[0] = "-";
+      } else if (state != CommandState::OK_WAIT) {
+        OK_ERROR("Unexpected OK (state=%d): %s", state, input_abbr().c_str());
+      }
+      state = CommandState::IDLE;
+      return;
     }
+
+    //
+    // Other responses interpreted by .state
+    //
+
+    if (state == CommandState::AT_CGMM_WAIT) {
+      status.hardware = etl::trim_view_whitespace(rest);
+      state = CommandState::OK_WAIT;
+      return;
+    } else if (state == CommandState::AT_CGMR_WAIT) {
+      status.versions[0] = etl::trim_view_whitespace(rest);
+      state = CommandState::OK_WAIT;
+      return;
+    }
+
+    OK_ERROR("Unexpected input (state=%d): %s", state, input_abbr().c_str());
   }
 
   etl::string<40> input_abbr() const {

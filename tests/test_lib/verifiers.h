@@ -6,8 +6,11 @@
 #define VERIFY_A_OP_B_STR(a, op, b) ({  \
     etl::string_view const _av(a), _bv(b);  \
     if (!(_av op _bv)) OK_REPORT_SOURCE(  \
-      OK_ERROR_LEVEL, "#TEST-FAIL# %s %s %s\n  %s = [%.*s]\n  %s = [%.*s]",  \
-      #a, #op, #b, #a, _av.size(), _av.data(), #b, _bv.size(), _bv.data()  \
+      OK_ERROR_LEVEL, \
+      "#TEST-FAIL# %s %s %s\n  %s (%db) = [%.*s]\n  %s (%db) = [%.*s]",  \
+      #a, #op, #b, \
+      #a, _av.size(), _av.size(), _av.data(), \
+      #b, _bv.size(), _bv.size(), _bv.data()  \
     );  \
   })
 

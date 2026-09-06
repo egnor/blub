@@ -41,6 +41,7 @@ postinstall = """
 """
 
 [tasks]
+check = "pytest"
 cu = { description = "compile + upload", depends = ["c", "u"] }
 um = { description = "upload + monitor", depends = ["u", "m"] }
 cum = { description = "compile + upload + monitor", depends = ["c", "um"] }
