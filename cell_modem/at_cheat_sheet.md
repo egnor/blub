@@ -223,12 +223,6 @@ accumulating ghosts.
 Entered by any `#XMQTTPUB` with an empty `<msg>`. Exit by sending the
 terminator, or automatically once `<len>` bytes arrive (PR #381 path).
 
-Our terminator is **`!"#$%`**, not the stock `+++`
-(`CONFIG_SM_DATAMODE_TERMINATOR` in `nrf9151_serial_modem.conf`) — chosen
-because the sequence can't occur inside a JSON string. Exit is confirmed by
-`#XDATAMODE: 0` (`-1` = failure). Once `<len>` is available, the terminator
-hack can go away.
-
 ## URCs
 
 | URC | Meaning |

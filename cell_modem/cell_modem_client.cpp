@@ -10,6 +10,7 @@
 #include <memory>
 #include <ok_logging.h>
 
+using namespace etl::chrono;
 using namespace etl::chrono_literals;
 
 // ISRG Root X1 (https://letsencrypt.org/certificates/)
@@ -94,21 +95,17 @@ class CellModemClientDef : public CellModemClient {
     auto const now = etl::chrono::steady_clock::now();
     if (state != CommandState::IDLE && now >= state_deadline) {
       OK_ERROR("Command timeout (state=%d), polling", state);
-      out_buf.append("\r\n!\"#$%\r\n");  // unstick modem parser state
+      out_buf.append("\r\n+++\"\r\n");  // unstick modem parser state
       state = CommandState::IDLE;
       next_periodic = {};  // Poll until we get a response
     }
 
     if (periodic_step < 0 && now >= next_periodic) {
-      // lambda to convert time_point to milliseconds since epoch for logging
-      auto const msec = [](auto const& tp) -> int64_t {
-        auto const d = tp.time_since_epoch();
-        return etl::chrono::duration_cast<etl::chrono::milliseconds>(d).count();
-      };
-
-      using ms = etl::chrono::milliseconds;
+      using namespace etl::chrono;
       OK_DETAIL(
-        "⏱️ Periodic poll (%lld > %lldmsec)", msec(now), msec(next_periodic)
+        "⏱️ Periodic poll (%.1f > %.1fs)",
+        duration_cast<duration<double>>(now.time_since_epoch()).count(),
+        duration_cast<duration<double>>(next_periodic.time_since_epoch()).count()
       );
       next_periodic = now + 10_s;
       periodic_step = 0;
@@ -195,9 +192,6 @@ class CellModemClientDef : public CellModemClient {
   }
 
  private:
-  using duration = etl::chrono::steady_clock::duration;
-  using time_point = etl::chrono::steady_clock::time_point;
-
   enum class CommandState {
     IDLE,
     AT_CGMM_WAIT,
@@ -213,8 +207,8 @@ class CellModemClientDef : public CellModemClient {
   CellModemStatus status;
 
   CommandState state = CommandState::IDLE;
-  time_point state_deadline = {};
-  time_point next_periodic = {};
+  steady_clock::time_point state_deadline = {};
+  steady_clock::time_point next_periodic = {};
   int periodic_step = -1;
 
   CertState cert_state = CertState::UNKNOWN;
@@ -266,7 +260,7 @@ class CellModemClientDef : public CellModemClient {
     if (eat(&rest, "#XMODEM:") || eat(&rest, "INIT ERROR")) {
       OK_ERROR("Modem fault (state=%d): %s", state, input_abbr().c_str());
       state = CommandState::FAILED;
-      state_deadline = etl::chrono::steady_clock::now() + 5_s;
+      state_deadline = steady_clock::now() + 5_s;
       status.registered = false;
       status.failed = true;
     }
