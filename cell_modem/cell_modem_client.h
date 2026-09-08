@@ -9,9 +9,10 @@
 namespace arduino { class HardwareSerial; }
 
 struct CellModemConfig {
-  etl::string_view mqtt_server;
   etl::string_view root_cert;
   etl::string_view root_cert_sha256;
+  etl::string_view mqtt_server, mqtt_user, mqtt_password;
+  int mqtt_port;
 };
 
 struct CellModemStatus {

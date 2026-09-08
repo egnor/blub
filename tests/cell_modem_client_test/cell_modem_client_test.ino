@@ -87,9 +87,7 @@ static void test_modem_client_setup() {
 
   VERIFY_A_OP_B_STR(write_buf, ==, "AT%CMNG=1,0,0\r\n");  // check certs again
   write_buf.clear();
-  fake_serial.read_buf =
-    "%CMNG: 0,0,\"0123456789ABCDEF\"\r\n"
-    "OK\r\n";
+  fake_serial.read_buf = "%CMNG: 0,0,\"0123456789ABCDEF\"\r\nOK\r\n";
   client->poll();
 
   VERIFY_A_OP_B_STR(write_buf, ==, "AT+CMEE=1\r\n");  // extended errors on
@@ -127,6 +125,11 @@ static void test_modem_client_setup() {
   VERIFY_A_OP_B_STR(write_buf, ==, "AT+CGPADDR\r\n");  // get IP status
   write_buf.clear();
   fake_serial.read_buf = "OK\r\n";
+  client->poll();
+
+  VERIFY_A_OP_B_STR(write_buf, ==, "AT#XMQTTCON?\r\n");  // get MQTT status
+  write_buf.clear();
+  fake_serial.read_buf = "#XMQTTCON: 0\r\nOK\r\n";
   client->poll();
 
   // Initial status after first poll cycle
