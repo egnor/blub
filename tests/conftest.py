@@ -1,6 +1,5 @@
 import asyncio
 import pytest_asyncio
-import shutil
 from asyncio.subprocess import PIPE
 from pathlib import Path
 

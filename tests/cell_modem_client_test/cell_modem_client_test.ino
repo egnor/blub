@@ -2,11 +2,28 @@
 
 #include <Arduino.h>
 #include <fake_serial.h>
+#include <root_cert.h>
+#include <SHA256.h>
 #include <verifiers.h>
 
 char const* const ok_logging_config = "DETAIL";
 
 static OkLoggingContext OK_CONTEXT("cell_modem_client_test");
+
+static void test_root_cert_sha256() {
+  OK_NOTE("#TEST# test_root_cert_sha256");
+  SHA256 sha256;
+  sha256.update(isrg_root_x1, strlen(isrg_root_x1));
+  uint8_t digest[32];
+  sha256.finalize(digest, sizeof(digest));
+  for (int i = 0; i < sizeof(digest); ++i) {
+    OK_NOTE("isrg_root_x1_sha256 byte %d", i);
+    char computed_digest_byte[3];
+    sprintf(computed_digest_byte, "%02X", digest[i]);
+    etl::string_view stored_digest_byte(isrg_root_x1_sha256 + i * 2, 2);
+    VERIFY_A_OP_B_STR(computed_digest_byte, ==, stored_digest_byte);
+  }
+}
 
 static void test_modem_client_setup() {
   OK_NOTE("#TEST# test_modem_client_setup");
@@ -165,6 +182,7 @@ void setup() {
   Serial1.begin(115200);
   ok_logging_stream = &Serial1;
   OK_NOTE("#BEGIN-TESTS#");
+  test_root_cert_sha256();
   test_modem_client_setup();
   OK_NOTE("#END-TESTS#");
 }
