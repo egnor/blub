@@ -57,8 +57,8 @@ static const OkLoggingContext OK_CONTEXT("cell_modem_client");
 
 class CellModemClientDef : public CellModemClient {
  public:
-  CellModemClientDef(HardwareSerial* s, etl::string_view mqtt)
-    : serial(s), mqtt_server(mqtt) {}
+  CellModemClientDef(HardwareSerial* s, CellModemConfig const& config)
+    : serial(s), config(config) {}
 
   CellModemStatus const& poll() override {
     for (int avail = 0; avail || ((avail = serial->available()) > 0); --avail) {
@@ -101,11 +101,11 @@ class CellModemClientDef : public CellModemClient {
     }
 
     if (periodic_step < 0 && now >= next_periodic) {
-      using namespace etl::chrono;
+      using dsec = duration<double>;
       OK_DETAIL(
         "⏱️ Periodic poll (%.1f > %.1fs)",
-        duration_cast<duration<double>>(now.time_since_epoch()).count(),
-        duration_cast<duration<double>>(next_periodic.time_since_epoch()).count()
+        duration_cast<dsec>(now.time_since_epoch()).count(),
+        duration_cast<dsec>(next_periodic.time_since_epoch()).count()
       );
       next_periodic = now + 10_s;
       periodic_step = 0;
@@ -144,7 +144,11 @@ class CellModemClientDef : public CellModemClient {
         state_deadline = now + 5_s;  // allow time for NVM write
         cert_state = CertState::OK_TO_WRITE;  // write after deleting
       } else if (cert_state == CertState::OK_TO_WRITE) {
-        output_line(AT_CMNG_SET_ROOT_CERT);
+        output_line("AT%CMNG=0,0,0,");
+        trim_whitespace_right(out_buf);
+        out_buf.append("\"");
+        out_buf.append(config.root_cert);
+        out_buf.append("\"\r\n");
         state = CommandState::OK_WAIT;
         state_deadline = now + 5_s;  // allow time for NVM write
         cert_state = CertState::UNKNOWN;  // re-verify after write
@@ -203,7 +207,7 @@ class CellModemClientDef : public CellModemClient {
   enum class CertState { UNKNOWN, INVALID, OK_TO_ERASE, OK_TO_WRITE, VALID };
 
   HardwareSerial* const serial;
-  etl::string<128> const mqtt_server;
+  CellModemConfig const config;
   CellModemStatus status;
 
   CommandState state = CommandState::IDLE;
@@ -398,14 +402,15 @@ class CellModemClientDef : public CellModemClient {
         eat_int(&rest, &type) && eat(&rest, ",") &&
         eat_quoted(&rest, &sha) && tag == 0 && type == 0
       ) {
-        if (sha == ROOT_CERT_SHA256) {
+        if (sha == config.root_cert_sha256) {
           cert_state = CertState::VALID;
           OK_DETAIL("Root cert correct:\n  %.*s", sha.size(), sha.data());
         } else {
           cert_state = CertState::INVALID;
           OK_ERROR(
-            "Root cert mismatch (updating):\n  expect: %s\n  actual: %.*s",
-            ROOT_CERT_SHA256, sha.size(), sha.data()
+            "Root cert mismatch (updating):\n  expect: %.*s\n  actual: %.*s",
+            config.root_cert_sha256.size(), config.root_cert_sha256.data(),
+            sha.size(), sha.data()
           );
         }
       } else {
@@ -561,8 +566,8 @@ class CellModemClientDef : public CellModemClient {
 };
 
 etl::unique_ptr<CellModemClient> make_cell_modem_client(
-  arduino::HardwareSerial* serial, etl::string_view mqtt_server
+  arduino::HardwareSerial* serial, CellModemConfig const& config
 ) {
   OK_FATAL_IF(serial == nullptr);
-  return etl::unique_ptr(new CellModemClientDef(serial, mqtt_server));
+  return etl::unique_ptr(new CellModemClientDef(serial, config));
 }

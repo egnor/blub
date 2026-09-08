@@ -5,6 +5,7 @@
 #include <ok_micro_dock.h>
 
 #include <cell_modem_client.h>
+#include <root_cert.h>
 
 extern char const* const ok_logging_config = "DETAIL";
 static const OkLoggingContext OK_CONTEXT("cell_bench");
@@ -34,5 +35,10 @@ void setup() {
   Serial1.setTX(12);
   Serial1.setRX(13);
   Serial1.begin(115200);
-  cell_modem = make_cell_modem_client(&Serial1, "mqtt.eacs.io");
+
+  CellModemConfig config;
+  config.mqtt_server = "mqtt.eacs.io";
+  config.root_cert = isrg_root_x1;
+  config.root_cert_sha256 = isrg_root_x1_sha256;
+  cell_modem = make_cell_modem_client(&Serial1, config);
 }

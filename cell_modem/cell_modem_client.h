@@ -8,6 +8,12 @@
 
 namespace arduino { class HardwareSerial; }
 
+struct CellModemConfig {
+  etl::string_view mqtt_server;
+  etl::string_view root_cert;
+  etl::string_view root_cert_sha256;
+};
+
 struct CellModemStatus {
   // hardware identification
   etl::string<32> hardware;
@@ -36,5 +42,5 @@ class CellModemClient {
 
 etl::unique_ptr<CellModemClient> make_cell_modem_client(
   arduino::HardwareSerial* serial,
-  etl::string_view mqtt_server
+  CellModemConfig const& config
 );
