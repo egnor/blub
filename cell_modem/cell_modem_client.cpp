@@ -52,7 +52,7 @@ class CellModemClientDef : public CellModemClient {
       }
     }
 
-    auto const now = etl::chrono::steady_clock::now();
+    auto const now = steady_clock::now();
     if (state != CommandState::IDLE && now >= state_deadline) {
       OK_ERROR("Command timeout (state=%d), polling", state);
       out_buf.append("\r\n+++\"\r\n");  // unstick modem parser state
@@ -143,15 +143,13 @@ class CellModemClientDef : public CellModemClient {
       } else if (periodic_step == 7) {
         out_buf = "AT#XMQTTCON?\r\n";  // get MQTT connection status
         state = CommandState::OK_WAIT;
-        ++periodic_step;
-      } else if (periodic_step == 8) {
-        OK_DETAIL("🏁 Periodic poll complete (%d steps)", periodic_step);
-        periodic_step = -1;
+        periodic_step = -1;  // End of poll steps
 
         // MQTT connection management
       } else if (mqtt_state == MqttState::OK_TO_DISCONNECT) {
         out_buf = "AT#XMQTTCON=0\r\n";
         state = CommandState::OK_WAIT;
+        state_deadline = now + 10_s;
         mqtt_state = MqttState::OK_TO_CONFIG;
       } else if (
         mqtt_state == MqttState::OK_TO_CONFIG && !status.imeisv.empty()
@@ -162,7 +160,7 @@ class CellModemClientDef : public CellModemClient {
       } else if (
         mqtt_state == MqttState::OK_TO_CONNECT &&
         cert_state == CertState::VALID &&
-        status.registered && status.ip_attached
+        !config.mqtt_server.empty() && status.registered && status.ip_attached
       ) {
         etl::format_to(
           out_buf, "AT#XMQTTCON=1,\"{}\",\"{}\",\"{}\",{}{}\r\n",
@@ -171,6 +169,7 @@ class CellModemClientDef : public CellModemClient {
           config.root_cert.empty() ? "" : ",0"
         );
         state = CommandState::OK_WAIT;
+        state_deadline = now + 60_s;  // DNS, TCP, TLS, etc. handshakes
         mqtt_state = MqttState::CONNECT_WAIT;
       }
 
@@ -204,6 +203,7 @@ class CellModemClientDef : public CellModemClient {
   };
 
   enum class MqttState {
+    UNKNOWN,
     OK_TO_DISCONNECT,
     OK_TO_CONFIG,
     OK_TO_CONNECT,
@@ -223,7 +223,7 @@ class CellModemClientDef : public CellModemClient {
 
   CertState cert_state = CertState::UNKNOWN;
 
-  MqttState mqtt_state = MqttState::OK_TO_DISCONNECT;
+  MqttState mqtt_state = MqttState::UNKNOWN;
   int mqtt_subscribed = 0;
 
   etl::string<8192> in_buf;
@@ -371,6 +371,7 @@ class CellModemClientDef : public CellModemClient {
             eat_int(&a1, &b3) && eat(&a1, ".") &&
             eat_int(&a1, &b4) && eat(&a1, "")
           ) {
+            status.ip_attached = true;
             status.ip_addr = (b1 << 24) | (b2 << 16) | (b3 << 8) | b4;
           } else {
             OK_ERROR("Bad +CGPADDR IPv4: %s", abbr(in_buf).c_str());
@@ -464,7 +465,7 @@ class CellModemClientDef : public CellModemClient {
 
     if (eat(&rest, "#XMQTTCON:")) {
       if (eat(&rest, "0")) {
-        if (mqtt_state == MqttState::OK_TO_DISCONNECT) {
+        if (mqtt_state <= MqttState::OK_TO_DISCONNECT) {
           mqtt_state = MqttState::OK_TO_CONFIG;
         } else if (mqtt_state >= MqttState::CONNECT_WAIT) {
           OK_ERROR("MQTT disconnected, reconnecting");
@@ -481,14 +482,15 @@ class CellModemClientDef : public CellModemClient {
         ) {
           int const config_sec = config.root_cert.empty() ? -1 : 0;
           if (
-            host == config.mqtt_server || port == config.mqtt_port ||
-            cid == status.imeisv || sec_tag == config_sec
+            host != config.mqtt_server || port != config.mqtt_port ||
+            cid != status.imeisv || sec_tag != config_sec
           ) {
             OK_ERROR(
-              "Bad MQTT host:\n  [%d]%.*s:%d (%.*s) !=\n  [%d]%.*s:%d (%.*s)",
-              sec_tag, host.size(), host.data(), port, cid.size(), cid.data(),
-              config_sec, config.mqtt_server.size(), config.mqtt_server.data(),
-              config.mqtt_port, status.imeisv.size(), status.imeisv.data()
+              "Bad MQTT host:\n  %.*s:%d[%d] (%.*s) !=\n  %.*s:%d[%d] (%.*s)",
+              host.size(), host.data(), port, sec_tag, cid.size(), cid.data(),
+              config.mqtt_server.size(), config.mqtt_server.data(),
+              config.mqtt_port, config_sec,
+              status.imeisv.size(), status.imeisv.data()
             );
             mqtt_state = MqttState::OK_TO_DISCONNECT;
           }
@@ -517,7 +519,7 @@ class CellModemClientDef : public CellModemClient {
     }
 
     if (rest.starts_with("+") || rest.starts_with("#")) {
-      OK_ERROR("Unexpected reply (state=%d): %s", state, abbr(in_buf).c_str());
+      OK_ERROR("Unexpected (state=%d): %s", state, abbr(in_buf).c_str());
       return;
     }
 
@@ -552,21 +554,21 @@ class CellModemClientDef : public CellModemClient {
       return;
     }
 
-    OK_ERROR("Unexpected input (state=%d): %s", state, abbr(in_buf).c_str());
+    OK_ERROR("Unexpected data (state=%d): %s", state, abbr(in_buf).c_str());
   }
 
   static etl::string<40> abbr(etl::string_view str) {
     etl::string<40> out;
     for (auto const ch : str) {
       if (out.size() > out.max_size() - 10) {
-        etl::format_to(out, "...{}b", str.size());
+        etl::format_to(etl::back_insert_iterator(out), "...{}b", str.size());
         break;
       } else if (ch == 10) {
         out.append("\\n");
       } else if (ch == 13) {
         out.append("\\r");
       } else if (ch < 32 || ch > 126) {
-        etl::format_to(out, "\\x{:02x}", ch);
+        etl::format_to(etl::back_insert_iterator(out), "\\x{:02x}", ch);
       } else {
         out.push_back(ch);
       }

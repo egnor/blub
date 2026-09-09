@@ -58,5 +58,5 @@ async def emulated_test_output(request, timeout=30.0) -> list[str]:
         await proc.wait()
         print("⏹️ Emulator stopped")
 
-    assert not failures, f"Test failed:\n  {'\n  '.join(failures)}"
+    assert not failures, f"Tests failed\n  {'\n  '.join(failures)}"
     return lines

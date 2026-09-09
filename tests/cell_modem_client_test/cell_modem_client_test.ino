@@ -30,7 +30,10 @@ static void test_modem_client_setup() {
   etl::string<8192> write_buf;
   FakeSerial fake_serial(0, "", &write_buf);
   CellModemConfig config;
-  config.mqtt_server = "mqtt-server";
+  config.mqtt_server = "server";
+  config.mqtt_port = 8883;
+  config.mqtt_user = "user";
+  config.mqtt_password = "pass";
   config.root_cert = "-----FAKE CERT-----\r\nABCDEF\r\n-----END CERT-----\r\n";
   config.root_cert_sha256 = "0123456789ABCDEF";
   auto const client = make_cell_modem_client(&fake_serial, config);
@@ -77,7 +80,7 @@ static void test_modem_client_setup() {
 
   VERIFY_A_OP_B_STR(
     write_buf, ==,
-    "AT%CMNG=0,0,0,\""
+    "AT%CMNG=0,0,0,\""  // write cert
     "-----FAKE CERT-----\r\nABCDEF\r\n-----END CERT-----\r\n"
     "\"\r\n"
   );
@@ -124,13 +127,32 @@ static void test_modem_client_setup() {
 
   VERIFY_A_OP_B_STR(write_buf, ==, "AT+CGPADDR\r\n");  // get IP status
   write_buf.clear();
-  fake_serial.read_buf = "OK\r\n";
+  fake_serial.read_buf = "+CGPADDR: 0,\"10.83.129.137\"\r\nOK\r\n";
   client->poll();
 
   VERIFY_A_OP_B_STR(write_buf, ==, "AT#XMQTTCON?\r\n");  // get MQTT status
   write_buf.clear();
   fake_serial.read_buf = "#XMQTTCON: 0\r\nOK\r\n";
   client->poll();
+
+  VERIFY_A_OP_B_STR(
+    write_buf, ==,
+    "AT#XMQTTCFG=\"490154203237518\",60,1\r\n"  // configure MQTT client
+  );
+  write_buf.clear();
+  fake_serial.read_buf = "OK\r\n";
+  client->poll();
+
+  VERIFY_A_OP_B_STR(
+    write_buf, ==,
+    "AT#XMQTTCON=1,\"user\",\"pass\",\"server\",8883,0\r\n"  // connect to MQTT
+  );
+  write_buf.clear();
+  fake_serial.read_buf = "OK\r\n";
+  client->poll();
+
+  // idle
+  VERIFY_A_OP_B_STR(write_buf, ==, "");
 
   // Initial status after first poll cycle
   auto const& status = client->poll();
@@ -154,9 +176,10 @@ static void test_modem_client_setup() {
   VERIFY_A_OP_B_INT(status.radio_band, ==, 12);
   VERIFY_A_OP_B_INT(status.radio_rsrp, ==, -92);
   VERIFY_A_OP_B_INT(status.radio_snr, ==, +6);
+  VERIFY_A_OP_B_INT(status.ip_attached, >, 0);
+  VERIFY_A_OP_B_INT(status.ip_addr, ==, 0x0A538189);
 
   // Unsolicited registration update (+CEREG) and status change
-  VERIFY_A_OP_B_STR(write_buf, ==, "");
   fake_serial.read_buf = "+CEREG: 5,\"417B\",\"02C80006\",7\r\n";
   auto const& status2 = client->poll();
   VERIFY_A_OP_B_STR(status.hardware, ==, "Fake Hardware");
@@ -179,6 +202,8 @@ static void test_modem_client_setup() {
   VERIFY_A_OP_B_INT(status.radio_band, ==, 0);  // reset with cell change
   VERIFY_A_OP_B_INT(status.radio_rsrp, ==, -0x8000);  // reset with cell change
   VERIFY_A_OP_B_INT(status.radio_snr, ==, -0x8000);  // reset with cell change
+  VERIFY_A_OP_B_INT(status.ip_attached, >, 0);  // assumed ongoing
+  VERIFY_A_OP_B_INT(status.ip_addr, ==, 0x0A538189);  // assumed unchanged
 }
 
 void setup() {
