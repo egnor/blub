@@ -7,7 +7,9 @@ non-`#X` commands, in Nordic's *nRF91x1 AT Commands Reference Guide*.
 
 Commands are `AT...` + CR. Every command ends with `OK` or `ERROR`
 (or `+CME ERROR: <n>` when extended errors are on). Unsolicited responses (URCs)
-can arrive at any time, including between a command and its `OK`.
+never interleave with a command and its response: the firmware queues them
+while the host is busy and flushes them only once the line is idle, so a URC
+can arrive **arbitrarily late** — see *URC delivery is deferred* below.
 
 ## Session setup
 
@@ -83,13 +85,13 @@ mutual TLS. PEM must use CRLF line endings.
 | `AT#XMQTTCFG="<id>",<keepalive>,<clean>` | `OK` | **Already connected**, or bad `<clean>` | Before connecting. `<clean>`: `0` persistent, `1` clean |
 | `AT#XMQTTCFG?` | `#XMQTTCFG: "<id>",<ka>,<clean>` | — | |
 | `AT#XMQTTCON=1,"<user>","<pass>","<host>",<port>[,<sec_tag>]` | `OK` then `#XMQTTEVT: 0,<r>` | DNS failed, TCP/TLS failed, or already connected | `1` = IPv4, `2` = IPv6. Add `<sec_tag>` for TLS (port 8883) |
-| `AT#XMQTTCON=0` | `OK` then `#XMQTTEVT: 1,<r>` | Not connected, **or** the link was already dead — teardown still happened | Disconnect |
+| `AT#XMQTTCON=0` | `OK` then `#XMQTTEVT: 1,0` | Not connected, in the pending-CONNACK dead zone, **or** the link was already dead (then `#XMQTTEVT: 1,<errno>` follows — teardown still happened) | Disconnect. Returns immediately; the event is a deferred URC. See *What `#XMQTTCON=0` does per state* |
 | `AT#XMQTTCON?` | `#XMQTTCON: 0` **or** `#XMQTTCON: 1,"<id>","<url>",<port>[,<tag>]` | — | **Not readiness** — see below. Note: the docs' example for this is wrong — the real fields are client_id and url, not username/password |
 | `AT#XMQTTSUB="<topic>",<qos>` | `OK` then `#XMQTTEVT: 7,<r>` | Not CONNACKed — *yet*, or *any more* | One at a time — SUBACK carries no topic to correlate on |
 | `AT#XMQTTUNSUB="<topic>"` | `OK` then `#XMQTTEVT: 8,<r>` | Not CONNACKed — *yet*, or *any more* | |
 | `AT#XMQTTPUB="<topic>","<msg>",<qos>,<retain>` | `OK` | Not CONNACKed, or bad `<qos>`/`<retain>` | Inline. Only safe if the payload has no `,` `"` CR or LF |
 | `AT#XMQTTPUB="<topic>","",<qos>,<retain>` | `OK`, enters data mode | as above | Then payload, then terminator |
-| `AT#XMQTTPUB="<topic>","",<qos>,<retain>,<len>` | `OK`, enters data mode | as above, plus `<len>` > `CONFIG_SM_DATAMODE_BUF_SIZE` | Counted — no terminator, no escaping. **Needs upstream PR #381** (cherry-picked in `nrf9151_build_setup.py`) |
+| `AT#XMQTTPUB="<topic>","",<qos>,<retain>,<len>` | `OK`, enters data mode | as above, plus `<len>` > `CONFIG_SM_DATAMODE_BUF_SIZE` | Counted — no terminator, no escaping. Upstream PR #381, now in the fork |
 
 **It is always a bare `ERROR`, never `+CME ERROR`.** `sm_at_cb_wrapper()` only
 reconstructs `+CME`/`+CMS ERROR` when a handler returns a *positive* value (the
@@ -135,13 +137,15 @@ check for "did the SM reset behind my back."
 `verify_tx_state()` too. There is nothing you can do but wait. Worse,
 `do_mqtt_disconnect()` sets `ctx.disconnect_requested` *before* the call that
 fails and returns early, so the flag stays set for the life of the connection;
-the poll thread then treats a later genuine `POLLNVAL` as an expected
-disconnect and exits without `mqtt_abort()`. **Do not try to disconnect out of
-this state.**
+the poll work handler then treats a later genuine `POLLNVAL` as an expected
+disconnect and returns without `mqtt_abort()`. **Do not try to disconnect out of
+this state.** (Fixed by upstream PR #435, not yet in the fork — see *What
+`#XMQTTCON=0` does per state*.)
 
-It is bounded: with no CONNACK, poll times out after the keepalive,
-`mqtt_live()` → `mqtt_ping()` fails `-ENOTCONN`, the thread aborts the
-connection and emits `#XMQTTEVT: 1,-113`. So the hang is ~1 keepalive.
+It is bounded: with no CONNACK, the keepalive work fires after one keepalive
+interval, `mqtt_live()` → `mqtt_ping()` fails `-ENOTCONN`,
+`mqtt_connection_abort()` runs and emits `#XMQTTEVT: 1,-113`. So the hang is
+~1 keepalive.
 
 ### Timeouts and blocking
 
@@ -155,7 +159,7 @@ not something cancellable. One deadline for all commands does not work here:
 |---|---|---|
 | `#XMQTTCFG`, `#XMQTTCON?`, `#XMQTTSUB`, `#XMQTTUNSUB`, `#XMQTTPUB` | a socket write at most | short |
 | `#XMQTTCON=1` | DNS + TCP + **TLS handshake** | tens of seconds |
-| `#XMQTTCON=0` | `k_thread_join(..., K_SECONDS(CONFIG_MQTT_KEEPALIVE))` | **> keepalive**, or a clean teardown reads as a wedge |
+| `#XMQTTCON=0` | one DISCONNECT socket write | short (17 ms measured). The `#XMQTTEVT: 1,0` that follows is a deferred URC, not part of the response |
 
 `CONFIG_MQTT_KEEPALIVE` is commented out in the SM `prj.conf`, so it is
 Zephyr's default **60 s**. `CONFIG_MQTT_CLEAN_SESSION=y`.
@@ -170,9 +174,12 @@ network state**; we would only be racing the firmware. Two exceptions:
 1. **Before tearing the PDN down ourselves** (`CFUN=0`/`4`, modem reset) — the
    broker gets a clean DISCONNECT instead of a half-open session.
 2. **When our watchdog fires before the firmware's does** — the firmware only
-   notices a silently blackholed path via missed PINGRESPs, i.e. ~2×keepalive
-   (~120 s). Anything shorter is ours to detect, and `#XMQTTCON=0` is the first
-   ladder rung.
+   notices a silently blackholed path via missed PINGRESPs. The keepalive work
+   fires once per keepalive interval of silence, aborts when *more than one*
+   PINGREQ is unanswered, so detection is the third firing: ~3×keepalive
+   (~180 s at 60 s), reported as `#XMQTTEVT: 1,-113`. Anything shorter is
+   ours to detect (`#XMQTTEVT: 9,0` per PINGRESP is the free signal to time),
+   and `#XMQTTCON=0` is the first ladder rung.
 
 `ERROR` from `#XMQTTCON=0` on a dead link is **not** a failure to clean up: the
 DISCONNECT write fails, which itself triggers full teardown, and only then does
@@ -182,6 +189,55 @@ The one case that does *not* self-clean is `#XMODEM: FAULT`.
 `nrf_modem_lib_shutdown()` runs from a work queue in `main.c` with no hook into
 the MQTT module: `ctx.connected` stays true over a dead fd. Drop all state and
 use the reset ladder — a graceful disconnect is not reliable there.
+
+### What `#XMQTTCON=0` does per state
+
+`do_mqtt_disconnect()` is short and every exit looks different on the wire:
+
+| Firmware state | Response | `#XMQTTEVT: 1,<r>` follows? |
+|---|---|---|
+| Not connected (`#XMQTTCON?` says `0`) | `ERROR` (`-ENOTCONN`) | **No.** Nothing to tear down, nothing to report |
+| CONNACKed, socket alive | `OK` | **Yes, `1,0`.** Zephyr's `mqtt_disconnect()` fires the callback *synchronously inside the command*, but the URC is queued, so it surfaces after `OK` once the line idles |
+| CONNACKed, socket dead | `ERROR` | **Yes, `1,<errno>`.** The DISCONNECT write fails, `client_write()` tears down with notify, and only then does the handler return the error |
+| Connected, no CONNACK yet (dead zone) | `ERROR` (`-ENOTCONN` from `verify_tx_state()`) | **No**, and `disconnect_requested` is now poisoned — see above |
+
+Rule: after `OK`, exactly one `1,0` is guaranteed and waiting for it is safe.
+After `ERROR`, poll `#XMQTTCON?`: `0` means there was nothing to do, go to
+`#XMQTTCFG`; `1` means the dead zone — wait for `#XMQTTEVT: 0,x` (CONNACK) or
+`1,-113` (keepalive backstop) and do not retry `#XMQTTCON=0`. The dead-socket
+`1,<errno>` arrives on the next idle flush and should be consumed, not treated
+as news about whatever connection you have started since.
+
+**After upstream PR #435** (`bc527c6`, merged 2026-09-07, **not yet in the
+fork**) the two `ERROR` rows for a live `ctx.connected` collapse: when
+`mqtt_disconnect()` fails, `do_mqtt_disconnect()` falls back to
+`mqtt_connection_abort()` and returns `OK`. So:
+
+| Firmware state | Response | `#XMQTTEVT: 1,<r>` follows? |
+|---|---|---|
+| Not connected | `ERROR` | no (unchanged) |
+| CONNACKed, socket alive | `OK` | `1,0` (unchanged) |
+| CONNACKed, socket dead | `OK` | `1,<errno>` from the write failure; the abort after it is a no-op |
+| No CONNACK yet (dead zone) | `OK` | **`1,-113`** — the abort path always reports `ECONNABORTED` |
+
+The rule becomes simpler: `OK` means the connection is closed and exactly one
+`1,x` is owed, where `x` may be `0`, `-113` or a write errno — **do not read
+a nonzero `x` after your own `#XMQTTCON=0` as a failure**. The
+`disconnect_requested` poisoning is gone, since the connection it would have
+poisoned no longer exists. The abort path also releases `mqtt_conn`, so the
+leak below no longer applies to `#XMQTTCON=0`; it still applies to a
+`#XMQTTPUB`/`#XMQTTSUB` write failure, after which `#XMQTTCON=0` returns
+`ERROR` (`ctx.connected` is already false) without releasing anything.
+
+**Leak on library-initiated teardown.** When the Zephyr client tears the
+session down itself (a failed write, from `#XMQTTCON=0`, `#XMQTTPUB` or
+`#XMQTTSUB` on a dead socket) the DISCONNECT callback only clears
+`ctx.connected`; `mqtt_conn_release()` is not called and the keepalive work is
+not cancelled. The next `#XMQTTCON=1` does `mqtt_conn = calloc(...)` without
+checking, so the previous ~1.5 KB struct leaks each time. `mqtt_connection_abort()`
+(the poll/keepalive path) and the `OK` path both release properly. Worth
+fixing upstream; until then, prefer letting the firmware notice a dead link
+(POLLHUP/keepalive) over writing to it.
 
 ### `#XMQTTCFG` is the one command that fails when things are going well
 
@@ -237,6 +293,71 @@ terminator, or automatically once `<len>` bytes arrive (PR #381 path).
 | `#XDATAMODE: <0\|-1>` | Data mode exited |
 | `#XMQTTEVT: <type>,<result>` | See table below. `<result>` 0 = ok, negative = errno — **except CONNACK**, see below |
 | `#XMQTTMSG: <topic_len>,<msg_len>` | Inbound message header — see framing note |
+
+### URC delivery is deferred
+
+Every URC — libmodem's (`+CEREG`, `+CGEV`) via `urc_send()`, and the `#X`
+modules' via `urc_send_to()` — is **queued, not written**. `sm_at_host.c`
+flushes the queue only when the host is *idle*: no command executing
+(`executing_lock == 0`) **and** the idle timer expired. The idle timer restarts
+on **every received byte** and is stopped when a full command line arrives; a
+URC that finds the host busy re-arms a 100 ms retry (`URC_RETRY_DELAY`, or
+`CONFIG_SM_URC_DELAY_WITH_INCOMPLETE_ECHO_MS` = 1 s if echo is on and a partial
+command is pending). `rsp_send()`, `rsp_send_to()` and `data_send()` also flush
+the queue first, but only if the host is idle at that moment, which it is not
+while a command is executing.
+
+Consequences:
+
+* A URC is **never** delivered between a command and its final `OK`/`ERROR`.
+* There are two queues: a global ring for libmodem URCs (`urc_send()`) and a
+  per-pipe list for `#X` module URCs (`urc_send_to()`). Order is preserved
+  within each, and a flush drains the global ring first, so a `+CEREG` and a
+  `#XMQTTEVT` can swap places relative to each other. Nothing is lost short of
+  global ring overflow, which resets the *whole* ring.
+* A host that sends the next command as soon as it sees `OK` **starves the
+  queue indefinitely**. The URC comes out after whichever command finally
+  leaves the line quiet, up to ~100 ms later.
+* A URC can therefore be *older* than a response received before it. A
+  `+CEREG` URC generated before `AT%XMONITOR` ran can arrive after
+  `%XMONITOR`'s answer and describe a state that answer already superseded.
+
+Observed on hardware, back-to-back commands with no idle gap:
+
+```
+6.639  AT#XMQTTCON=0            (tearing down a session left from the last run)
+6.656  OK                        <- #XMQTTEVT: 1,0 was queued inside this command
+6.656  AT#XMQTTCFG=...
+6.665  OK
+6.665  AT#XMQTTCON=1,...         <- blocks ~5 s in DNS + TCP + TLS
+11.819 OK                        <- CONNECT written
+11.920 #XMQTTEVT: 1,0            <- the 6.6 s disconnect, 100 ms after the line idled
+12.451 #XMQTTEVT: 0,0            <- CONNACK for the 6.665 connect
+```
+
+A client that reads the `1,0` as "the new session died" will issue
+`#XMQTTCFG` (`ERROR`, `-EINVAL`: connected) and `#XMQTTCON=1` (`ERROR`,
+`-EISCONN`) and then be rescued by the CONNACK. It works by accident.
+
+How to live with it, without sleeping between commands:
+
+* **Treat poll responses as truth and URCs as triggers.** `%XMONITOR`,
+  `+CGPADDR`, `#XMQTTCON?` describe the state at the moment they ran. A URC
+  says "something changed, re-poll" — do not copy its payload into state
+  as if it were newer than the last response.
+* **Count MQTT events, don't interpret them by current state.** Each
+  `#XMQTTCON=1` that returned `OK` owes exactly one `0,x`; each session owes
+  exactly one `1,x`; each `#XMQTTSUB` that returned `OK` owes one `7,x`. Match
+  each event to the oldest outstanding debt. A `1,x` arriving while a `1,x`
+  is owed for a *previous* session is that session's, not this one's.
+* **Wait for what is owed before moving on.** After `#XMQTTCON=0` → `OK`,
+  wait for the `1,0` before sending `#XMQTTCFG`. This costs one idle window
+  (~100 ms) and removes the ambiguity; it is an event wait, not a sleep.
+* There is no command that forces a flush: a no-op `AT` just defers the
+  queue again. Only an idle gap does it. If some transition truly needs the
+  queue drained, leave the line quiet for one retry window (100 ms) and
+  accept that it is a sleep; the debt model above is how to avoid needing
+  one.
 
 ### `#XMQTTEVT` types
 
@@ -307,8 +428,8 @@ LF, `"`, or NUL. Read it by **byte count**, never by line. Payload size is
 unbounded by the firmware — it streams straight through — so cap it
 client-side and discard the excess.
 
-Framing, **as we build it** (the `#XMQTTMSG` fix in `LOCAL_PATCHES` is
-required for this — see below):
+Framing (correct since the fork rebased past upstream `7c1cb92`; older fork
+builds get it backwards — see below):
 
 ```
 #XMQTTMSG: <topic_len>,<msg_len>CRLF
@@ -321,8 +442,9 @@ Verified on hardware: subscribing to `test` and publishing `test message body`
 gives `#XMQTTMSG: 4,17`, then `test`, then the 17 payload bytes, then
 `#XMQTTEVT: 2,0`.
 
-**⚠ Stock fork firmware gets this backwards** — do not trust an unpatched
-build. `handle_mqtt_publish_evt()` takes `sm_at_host_lock()`, which increments
+**⚠ Fork builds before `268e839` (Sep 2026) get this backwards** — check
+`AT#XSMVER` before trusting one. There, `handle_mqtt_publish_evt()` takes
+`sm_at_host_lock()`, which increments
 `executing_lock`; `is_idle_ctx()` requires that to be `0`; and `urc_send_to()`
 on a pipe-specific ctx appends to `ctx->buffered_urcs`, flushing only when idle.
 So the header is *queued* inside the lock while topic and payload go straight
@@ -347,47 +469,43 @@ line: the NCS import (`0b6369c`) had `rsp_send()` — immediate, correct. Nordic
 `62061b1` *"app: Allow targeting responses to a pipe"* (3 Mar 2026) swept it to
 `urc_send_to()`. That same commit is the one that *defines* `rsp_send_to()`, so
 the correct replacement existed in the changeset that broke it. Upstream
-`7c1cb92` (Aug 2026) puts it back; the fork has not rebased. We patch it locally
-in `nrf9151_build_setup.py` rather than carrying `7c1cb92`, which is entangled
-with a poll-callback rewrite and a malloc refactor.
+`7c1cb92` (Aug 2026) puts it back and the fork now carries it, so the local
+patch we used to apply in `nrf9151_build_setup.py` is gone (`LOCAL_PATCHES` is
+empty).
 
 ## Upstream drift
 
-We are pinned to the circuitdojo fork. Nordic
+We are pinned to the circuitdojo fork, currently `268e839` (Sep 2026), which
+has rebased onto Nordic's Aug 2026 work-queue refactors. Everything in this file
+describes that tree. Two of those commits changed behavior we care about:
+
 [`7c1cb92`](https://github.com/nrfconnect/ncs-serial-modem/commit/7c1cb929e417f22ec5396f5733e591da00c26006)
-(*app: Refactor MQTT to use work queue and dynamic memory*, Aug 2026) rewrites
-`sm_at_mqtt.c`: the dedicated 2 KB polling thread becomes a one-shot `SO_POLLCB`
-callback dispatched onto `sm_work_q`, keepalive becomes a delayable work item,
-and buffers/strings move into a single `calloc`'d struct that exists only while
-connected. Not in the fork yet. Nothing here forces our hand — accept it in due
-course, but know what changes:
+*app: Refactor MQTT to use work queue and dynamic memory* — the dedicated
+polling thread became a one-shot `SO_POLLCB` callback dispatched onto
+`sm_work_q`, keepalive became a delayable work item, and buffers/strings live in
+one `calloc`'d struct that exists only while connected. Effects:
 
-**Fixes for us**
+* **The inbound framing bug is fixed** (`#XMQTTMSG` header via `rsp_send_to()`).
+* **`#XMQTTCON=0` no longer blocks** on a thread join; it returns after the
+  DISCONNECT write.
+* **`#XMQTTCON=1` gains `-ENOMEM`** as another meaning for `ERROR`.
+* **A slow inbound payload holds the AT host lock across work invocations**,
+  so a large or stalled inbound message can delay our command responses.
+* **The teardown leak** described under *What `#XMQTTCON=0` does per state*.
 
-* **The inbound framing bug above** (confirmed on hardware). The `#XMQTTMSG`
-  header switches back to `rsp_send_to()` so it precedes the payload. This was
-  the only reason to care about this commit, and we already carry the one-line
-  fix in `LOCAL_PATCHES` — when the fork rebases past it, `git apply` will fail
-  and that entry comes out.
-* **`#XMQTTCON=0` stops blocking.** `k_thread_join(..., K_SECONDS(CONFIG_MQTT_KEEPALIVE))`
-  is gone, replaced by `k_work_cancel_delayable()` and immediate teardown. The
-  60-second worst case in *Timeouts and blocking* disappears.
+[`68c9897`](https://github.com/nrfconnect/ncs-serial-modem/commit/68c9897e8c6cbdf67310baa10dc5f285e33c78eb)
+*app: Add work queue for long blocking operations* — only nRF Cloud uses it so
+far. `#XMQTTCON=1` still runs on `sm_work_q`, so while it blocks in DNS/TCP/TLS
+**nothing else on that queue runs**: no other AT command, no MQTT poll work, no
+URC flush.
 
-**New behavior to watch for**
+Pending, merged upstream but not in the fork: #431 (`928c805`, data-mode
+`<data_len>` after a send failure) and #435 (`bc527c6`, `#XMQTTCON=0` always
+closes). Both are small and could go into `LOCAL_PATCHES` if the fork lags.
 
-* **`#XMQTTCON=1` gains `-ENOMEM`** — the connection struct is allocated per
-  connect. Another meaning for `ERROR`.
-* **A slow inbound payload holds the AT host lock across work invocations.**
-  On `-EAGAIN` the poll handler returns *still holding* `sm_at_host_lock()` and
-  re-arms. Framing stays atomic (good), but a large or stalled inbound message
-  can now delay our command responses. `mqtt_connection_abort()` has explicit
-  code to release the lock if the connection dies mid-drain.
-
-**Unchanged — everything else in this file still applies**
-
-The two notions of "connected", `#XMQTTCON?` reporting pre-CONNACK, the
-pending-CONNACK dead zone *including* the `disconnect_requested` poisoning, the
-keepalive backstop landing on `#XMQTTEVT: 1,-113`, bare `ERROR` never
+Unchanged: the two notions of "connected", `#XMQTTCON?` reporting pre-CONNACK,
+the pending-CONNACK dead zone including the `disconnect_requested` poisoning,
+the keepalive backstop landing on `#XMQTTEVT: 1,-113`, bare `ERROR` never
 `+CME ERROR`, SUBACK unable to report broker refusal, and `session_present`
 still dropped on the floor.
 

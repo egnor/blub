@@ -1,12 +1,12 @@
 #include <Arduino.h>
 #include <etl/chrono.h>
-
+#include <etl/vector.h>
 #include <ok_logging.h>
 #include <ok_little_layout.h>
 #include <ok_micro_dock.h>
 
+#include <blub_mqtt_config.h>
 #include <cell_modem_client.h>
-#include <root_cert.h>
 
 using namespace etl::chrono;
 using namespace etl::chrono_literals;
@@ -48,18 +48,19 @@ void loop() {
   }
 
   if (loop_time > next_print_time) {
-    next_print_time += 1_s;
-    OK_NOTE(
-      "\n📟 %s imei-sv:%s\n",
-      status.hardware.c_str(), status.imeisv.c_str()
-    );
-    OK_NOTE(
-      "🏷️ %s %s %s %s",
-      status.versions[0].c_str(),
-      status.versions[1].c_str(),
-      status.versions[2].c_str(),
-      status.versions[3].c_str()
-    );
+    next_print_time = loop_time + 1_s;
+    if (status.hardware.empty()) {
+      OK_NOTE("🚫 hardware N/A");
+    } else {
+      OK_NOTE("\n📟 %s %s\n", status.hardware.c_str(), status.imeisv.c_str());
+      OK_NOTE(
+        "🏷️ %s %s %s %s",
+        status.versions[0].c_str(),
+        status.versions[1].c_str(),
+        status.versions[2].c_str(),
+        status.versions[3].c_str()
+      );
+    }
     if (!status.running) {
       OK_NOTE("🚫 radio off");
     } else if (status.failed) {
@@ -79,7 +80,11 @@ void loop() {
       );
     }
     if (status.ip_attached) {
-      OK_NOTE("🌐 IP: %d.%d.%d.%d", ip[0], ip[1], ip[2], ip[3]);
+      OK_NOTE(
+        "🌐 IP: %d.%d.%d.%d %s", ip[0], ip[1], ip[2], ip[3],
+        status.mqtt_subscribed ? "🗨️ MQTT subscribed" :
+        status.mqtt_connected ? "💬 MQTT connecting" : "⛓️‍💥 MQTT disconnected"
+      );
     } else {
       OK_NOTE("⭕ No IP attached");
     }
@@ -93,16 +98,16 @@ void setup() {
   OK_NOTE("BLUB Cell Modem Bench Test");
   ok_dock_init_feather_v8();
   ok_dock_layout->line_printf(0, "\v\f10\1Cell Bench");
+
+  for (int c = 5; c >= 0; --c) {
+    OK_NOTE("⏳ Startup delay %dsec...", c);
+    ok_dock_layout->line_printf(1, "\f9Start %d...", c);
+    delay(1000);
+  }
+
   Serial1.setTX(12);
   Serial1.setRX(13);
   Serial1.begin(115200);
-
-  CellModemConfig config;
-  config.mqtt_server = "mqtt.eacs.io";
-  config.mqtt_port = 8883;
-  config.mqtt_user = "blub";
-  config.mqtt_password = "blub";
-  config.root_cert = isrg_root_x1;
-  config.root_cert_sha256 = isrg_root_x1_sha256;
-  cell_modem = make_cell_modem_client(&Serial1, config);
+  static const etl::string_view subs[] = {"cell_bench"};
+  cell_modem = make_cell_modem_client(&Serial1, blub_mqtt_config, subs);
 }

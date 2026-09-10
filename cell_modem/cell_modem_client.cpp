@@ -17,8 +17,26 @@ static const OkLoggingContext OK_CONTEXT("cell_modem_client");
 
 class CellModemClientDef : public CellModemClient {
  public:
-  CellModemClientDef(HardwareSerial* s, CellModemConfig const& config)
-    : serial(s), config(config) {}
+  CellModemClientDef(
+    HardwareSerial* ser,
+    MqttServerConfig const& serv,
+    etl::span<etl::string_view const> subs
+  ) : serial(ser), mqtt_server(serv), mqtt_subs(subs) {
+    // Catch things that would cause bad command syntax
+    OK_FATAL_IF(ser == nullptr);
+    if (serv.cert.find_first_of("\"") != etl::string_view::npos)  // CRLF OK
+      OK_FATAL("Bad MQTT cert: %s", abbr(serv.cert).c_str());
+    if (serv.host.find_first_of("\"\r\n") != etl::string_view::npos)
+      OK_FATAL("Bad MQTT host: %s", abbr(serv.host).c_str());
+    if (serv.user.find_first_of("\"\r\n") != etl::string_view::npos)
+      OK_FATAL("Bad MQTT user: %s", abbr(serv.user).c_str());
+    if (serv.password.find_first_of("\"\r\n") != etl::string_view::npos)
+      OK_FATAL("Bad MQTT password: %s", abbr(serv.password).c_str());
+    for (int i = 0; i < subs.size(); ++i) {
+      if (subs[i].find_first_of("\"\r\n") != etl::string_view::npos)
+        OK_FATAL("Bad MQTT sub #%d: %s", i, abbr(subs[i]).c_str());
+    }
+  }
 
   CellModemStatus const& poll() override {
     for (int avail = 0; avail || ((avail = serial->available()) > 0); --avail) {
@@ -54,10 +72,9 @@ class CellModemClientDef : public CellModemClient {
 
     auto const now = steady_clock::now();
     if (state != CommandState::IDLE && now >= state_deadline) {
-      OK_ERROR("Command timeout (state=%d), polling", state);
+      OK_ERROR("Command timeout (state=%d)", state);
       out_buf.append("\r\n+++\"\r\n");  // unstick modem parser state
       state = CommandState::IDLE;
-      next_periodic = {};  // Poll until we get a response
     }
 
     if (periodic_step < 0 && now >= next_periodic) {
@@ -69,6 +86,7 @@ class CellModemClientDef : public CellModemClient {
       );
       next_periodic = now + 10_s;
       periodic_step = 0;
+      do_poll_reg = do_poll_ip = do_poll_mqtt = true;
     }
 
     if (state == CommandState::IDLE && out_complete >= out_buf.size()) {
@@ -94,19 +112,19 @@ class CellModemClientDef : public CellModemClient {
       } else if (cert_state == CertState::UNKNOWN) {
         out_buf = "AT%CMNG=1,0,0\r\n";  // 1=check slot=0 type=0=root
         state = CommandState::OK_WAIT;
-        cert_state = config.root_cert.empty()
+        cert_state = mqtt_server.cert.empty()
           ? CertState::VALID : CertState::INVALID;
       } else if (cert_state == CertState::INVALID) {
-        out_buf = "AT+CFUN=4\r\n";  // turn off the radio before updating cert
+        out_buf = "AT+CFUN=4\r\n";  // 4=radio-off before cert update
         state = CommandState::OK_WAIT;
-        cert_state = CertState::OK_TO_ERASE;
+        cert_state = CertState::OK_TO_ERASE;  // erase (radio should be off)
       } else if (cert_state == CertState::OK_TO_ERASE) {
-        out_buf = "AT%CMNG=3,0,0\r\n"; // 3=del slot=0 type=0=root
-        state = CommandState::OK_WAIT;  // returns OK even if slot was empty
+        out_buf = "AT%CMNG=3,0,0\r\n";  // 3=del slot=0 type=0=root
+        state = CommandState::OK_WAIT;
         state_deadline = now + 5_s;  // allow time for NVM write
-        cert_state = CertState::OK_TO_WRITE;  // write after deleting
+        cert_state = CertState::OK_TO_WRITE;  // write (radio off, cert erased)
       } else if (cert_state == CertState::OK_TO_WRITE) {
-        etl::format_to(out_buf, "AT%CMNG=0,0,0,\"{}\"\r\n", config.root_cert);
+        etl::format_to(out_buf, "AT%CMNG=0,0,0,\"{}\"\r\n", mqtt_server.cert);
         state = CommandState::OK_WAIT;
         state_deadline = now + 5_s;  // allow time for NVM write
         cert_state = CertState::UNKNOWN;  // re-verify after write
@@ -125,52 +143,57 @@ class CellModemClientDef : public CellModemClient {
         state = CommandState::OK_WAIT;
         ++periodic_step;
       } else if (periodic_step == 3) {
-        out_buf = "AT+CEREG=3\r\n";  // registration notifications (after CFUN)
+        out_buf = "AT+CEREG=1\r\n";  // registration notifications (after CFUN)
         state = CommandState::OK_WAIT;
         ++periodic_step;
       } else if (periodic_step == 4) {
         out_buf = "AT+CGEREP=1\r\n";  // IP status notifications (after CFUN)
         state = CommandState::OK_WAIT;
-        ++periodic_step;
-      } else if (periodic_step == 5) {
+        periodic_step = -1;  // End of periodic poll
+
+      } else if (do_poll_reg) {
         out_buf = "AT%XMONITOR\r\n";  // network and radio status
         state = CommandState::OK_WAIT;
-        ++periodic_step;
-      } else if (periodic_step == 6) {
+        do_poll_reg = false;
+      } else if (do_poll_ip) {
         out_buf = "AT+CGPADDR\r\n";  // get packet (IP) addresses
-        state = CommandState::OK_WAIT;
-        ++periodic_step;
-      } else if (periodic_step == 7) {
+        state = CommandState::AT_CGPADDR_WAIT;
+        do_poll_ip = false;
+      } else if (do_poll_mqtt) {
         out_buf = "AT#XMQTTCON?\r\n";  // get MQTT connection status
         state = CommandState::OK_WAIT;
-        periodic_step = -1;  // End of poll steps
+        do_poll_mqtt = false;
 
         // MQTT connection management
       } else if (mqtt_state == MqttState::OK_TO_DISCONNECT) {
         out_buf = "AT#XMQTTCON=0\r\n";
         state = CommandState::OK_WAIT;
-        state_deadline = now + 10_s;
         mqtt_state = MqttState::OK_TO_CONFIG;
-      } else if (
-        mqtt_state == MqttState::OK_TO_CONFIG && !status.imeisv.empty()
-      ) {
+      } else if (mqtt_state == MqttState::OK_TO_CONFIG &&
+                 !status.imeisv.empty()) {
         etl::format_to(out_buf, "AT#XMQTTCFG=\"{}\",60,1\r\n", status.imeisv);
         state = CommandState::OK_WAIT;
         mqtt_state = MqttState::OK_TO_CONNECT;
-      } else if (
-        mqtt_state == MqttState::OK_TO_CONNECT &&
-        cert_state == CertState::VALID &&
-        !config.mqtt_server.empty() && status.registered && status.ip_attached
-      ) {
+      } else if (mqtt_state == MqttState::OK_TO_CONNECT &&
+                 status.ip_attached && now >= mqtt_backoff &&
+                 !mqtt_server.host.empty()) {
         etl::format_to(
           out_buf, "AT#XMQTTCON=1,\"{}\",\"{}\",\"{}\",{}{}\r\n",
-          config.mqtt_user, config.mqtt_password,
-          config.mqtt_server, config.mqtt_port,
-          config.root_cert.empty() ? "" : ",0"
+          mqtt_server.user, mqtt_server.password,
+          mqtt_server.host, mqtt_server.port,
+          mqtt_server.cert.empty() ? "" : ",0"
         );
         state = CommandState::OK_WAIT;
         state_deadline = now + 60_s;  // DNS, TCP, TLS, etc. handshakes
         mqtt_state = MqttState::CONNECT_WAIT;
+        mqtt_subscribed = 0;
+        mqtt_backoff = now + 30_s;  // limit reconnection attempts
+      } else if (mqtt_state == MqttState::CONNECTED &&
+                 mqtt_subscribed < mqtt_subs.size()) {
+        auto const sub = mqtt_subs[mqtt_subscribed];
+        etl::format_to(out_buf, "AT#XMQTTSUB=\"{}\",0\r\n", sub);
+        state = CommandState::OK_WAIT;
+        mqtt_state = MqttState::SUBSCRIBE_WAIT;
       }
 
       if (!out_buf.empty()) {
@@ -182,6 +205,9 @@ class CellModemClientDef : public CellModemClient {
       serial->write(out_buf[out_complete++]);
     }
 
+    status.mqtt_connected = (mqtt_state >= MqttState::CONNECTED);
+    status.mqtt_subscribed =
+      (status.mqtt_connected && mqtt_subscribed >= mqtt_subs.size());
     return status;
   }
 
@@ -190,6 +216,7 @@ class CellModemClientDef : public CellModemClient {
     IDLE,
     AT_CGMM_WAIT,
     AT_CGMR_WAIT,
+    AT_CGPADDR_WAIT,
     FAILED,
     OK_WAIT,
   };
@@ -203,7 +230,6 @@ class CellModemClientDef : public CellModemClient {
   };
 
   enum class MqttState {
-    UNKNOWN,
     OK_TO_DISCONNECT,
     OK_TO_CONFIG,
     OK_TO_CONNECT,
@@ -213,17 +239,21 @@ class CellModemClientDef : public CellModemClient {
   };
 
   HardwareSerial* const serial;
-  CellModemConfig const config;
+  MqttServerConfig const mqtt_server;
+  etl::span<etl::string_view const> const mqtt_subs;
   CellModemStatus status;
 
   CommandState state = CommandState::IDLE;
   steady_clock::time_point state_deadline = {};
   steady_clock::time_point next_periodic = {};
   int periodic_step = -1;
+  bool do_poll_reg = true;
+  bool do_poll_ip = true;
+  bool do_poll_mqtt = true;
 
   CertState cert_state = CertState::UNKNOWN;
-
-  MqttState mqtt_state = MqttState::UNKNOWN;
+  MqttState mqtt_state = MqttState::OK_TO_DISCONNECT;
+  steady_clock::time_point mqtt_backoff = {};
   int mqtt_subscribed = 0;
 
   etl::string<8192> in_buf;
@@ -243,15 +273,14 @@ class CellModemClientDef : public CellModemClient {
     //
 
     if (eat(&rest, "Ready")) {
-      if (status.running) {
+      if (!status.running) {
         OK_NOTE("Modem init: %s", abbr(in_buf).c_str());
       } else {
-        OK_ERROR("Modem reset (state=%d): %s", state, abbr(in_buf).c_str());
+        OK_ERROR("Modem reset: %s", abbr(in_buf).c_str());
       }
       state = CommandState::IDLE;
-      next_periodic = {};  // Initialize immediately
       status.running = true;
-      status.registered = false;
+      next_periodic = {};  // Initialize immediately
       return;
     }
 
@@ -259,15 +288,14 @@ class CellModemClientDef : public CellModemClient {
       OK_ERROR("Modem fault (state=%d): %s", state, abbr(in_buf).c_str());
       state = CommandState::FAILED;
       state_deadline = steady_clock::now() + 5_s;
-      status.registered = false;
+      status.running = false;
       status.failed = true;
+      return;
     }
 
-    if (
-      eat(&rest, "ERROR") ||
-      eat(&rest, "+CME ERROR:") ||
-      eat(&rest, "+CMS ERROR:")
-    ) {
+    if (eat(&rest, "ERROR") ||
+        eat(&rest, "+CME ERROR:") ||
+        eat(&rest, "+CMS ERROR:")) {
       OK_ERROR("Modem error (state=%d): %s", state, abbr(in_buf).c_str());
       state = CommandState::IDLE;
       return;
@@ -278,80 +306,12 @@ class CellModemClientDef : public CellModemClient {
     //
 
     if (eat(&rest, "+CEREG:")) {
-      int reg;
-      if (eat_int(&rest, &reg)) {
-        status.running = (reg == 1 || reg == 2 || reg == 5);
-        status.registered = (reg == 1 || reg == 5);
-        if (reg == 1) status.roaming = false;
-        if (reg == 5) status.roaming = true;
-        if (reg == 3 || reg == 90) status.failed = true;
-        if (status.running) status.failed = false;
-        if (status.registered) status.reject_cause = 0;
-
-        etl::string_view cell_tac, cell_id;
-        int act;
-        if (
-          eat(&rest, ",") && eat_quoted(&rest, &cell_tac) &&
-          eat(&rest, ",") && eat_quoted(&rest, &cell_id) &&
-          eat(&rest, ",") && eat_int(&rest, &act)
-        ) {
-          auto const tac = etl::to_arithmetic<uint16_t>(cell_tac, etl::hex);
-          auto const id = etl::to_arithmetic<uint32_t>(cell_id, etl::hex);
-          auto const& st = status;
-          if (tac != st.cell_tac || id != st.cell_id || act != st.radio_tech) {
-            status.op_mcc = status.op_mnc = 0;  // Unknown from +CEREG
-            status.cell_tac = tac;
-            status.cell_id = id;
-            status.radio_tech = act;
-            // Registration changed; reset radio status fields until next poll
-            status.cell_phys_id = 0;
-            status.radio_earfcn = 0;
-            status.radio_band = 0;
-            status.radio_rsrp = status.radio_snr = -0x8000;
-            next_periodic = {};  // Trigger a poll to get status faster
-          }
-
-          int cause_type, reject_cause;
-          if (
-            eat(&rest, ",") && eat_int(&rest, &cause_type) &&
-            eat(&rest, ",") && eat_int(&rest, &reject_cause) &&
-            cause_type == 0 && !status.registered
-          ) {
-            status.reject_cause = reject_cause;
-          }
-        }
-      }
-      if (!eat(&rest, "")) OK_ERROR("Bad +CEREG: %s", abbr(in_buf).c_str());
+      do_poll_reg = do_poll_ip = true;  // This could be stale; trigger a poll
       return;
     }
 
     if (eat(&rest, "+CGEV:")) {
-      if (eat(&rest, "NW") || eat(&rest, "ME")) {
-        if (eat(&rest, "PDN ACT")) {
-          status.ip_attached = true;
-          next_periodic = {};  // Trigger a poll to get IP addresses, etc.
-          return;  // Don't bother parsing further
-        } else if (
-          eat(&rest, "PDN DEACT") || eat(&rest, "DETACH") ||
-          eat(&rest, "OVERHEATED")
-        ) {
-          if (status.ip_attached) next_periodic = {};  // Trigger a poll
-          status.ip_attached = false;
-          status.ip_addr = 0;
-          return;  // Don't bother parsing further
-        } else if (
-          eat(&rest, "ACT") || eat(&rest, "DEACT") ||
-          eat(&rest, "BATTERY LOW") || eat(&rest, "MODIFY")
-        ) {
-          return;  // Ignore these, don't bother parsing further
-        }
-      } else if (
-        eat(&rest, "IPV6") || eat(&rest, "RESTR") ||
-        eat(&rest, "APNARATECTRL") || eat(&rest, "EXCE")
-      ) {
-        return;  // Ignore these, don't bother parsing further
-      }
-      if (!eat(&rest, "")) OK_ERROR("Bad +CGEV: %s", abbr(in_buf).c_str());
+      do_poll_ip = true;  // This could be stale; trigger a poll
       return;
     }
 
@@ -365,51 +325,49 @@ class CellModemClientDef : public CellModemClient {
           status.ip_addr = 0;
         } else {
           int b1, b2, b3, b4;
-          if (
-            eat_int(&a1, &b1) && eat(&a1, ".") &&
-            eat_int(&a1, &b2) && eat(&a1, ".") &&
-            eat_int(&a1, &b3) && eat(&a1, ".") &&
-            eat_int(&a1, &b4) && eat(&a1, "")
-          ) {
+          if (eat_int(&a1, &b1) && eat(&a1, ".") &&
+              eat_int(&a1, &b2) && eat(&a1, ".") &&
+              eat_int(&a1, &b3) && eat(&a1, ".") &&
+              eat_int(&a1, &b4) && eat(&a1, "")) {
             status.ip_attached = true;
             status.ip_addr = (b1 << 24) | (b2 << 16) | (b3 << 8) | b4;
+            if (state == CommandState::AT_CGPADDR_WAIT) {
+              state = CommandState::OK_WAIT;  // Got at least one IP
+            }
           } else {
             OK_ERROR("Bad +CGPADDR IPv4: %s", abbr(in_buf).c_str());
           }
         }
       }
-      if (!eat(&rest, "")) OK_ERROR("Bad +CGPADDR: %s", abbr(in_buf).c_str());
+      if (!eat(&rest, "")) OK_ERROR("Bad input: %s", abbr(in_buf).c_str());
       return;
     }
 
     if (eat(&rest, "+CGSN:")) {
       etl::string_view v;
       if (eat_quoted(&rest, &v)) status.imeisv = v.empty() ? "-" : v;
-      if (!eat(&rest, "")) OK_ERROR("Bad +CGSN: %s", abbr(in_buf).c_str());
+      if (!eat(&rest, "")) OK_ERROR("Bad input: %s", abbr(in_buf).c_str());
       return;
     }
 
     if (eat(&rest, "%CMNG:")) {
       int tag, type;
       etl::string_view sha;
-      if (
-        eat_int(&rest, &tag) && eat(&rest, ",") &&
-        eat_int(&rest, &type) && eat(&rest, ",") &&
-        eat_quoted(&rest, &sha) && tag == 0 && type == 0
-      ) {
-        if (sha == config.root_cert_sha256) {
+      if (eat_int(&rest, &tag) && eat(&rest, ",") &&
+          eat_int(&rest, &type) && eat(&rest, ",") &&
+          eat_quoted(&rest, &sha) && tag == 0 && type == 0) {
+        if (sha == mqtt_server.cert_sha256) {
           cert_state = CertState::VALID;
-          OK_DETAIL("Root cert correct:\n  %.*s", sha.size(), sha.data());
         } else {
           cert_state = CertState::INVALID;
           OK_ERROR(
-            "Root cert mismatch (updating):\n  expect: %.*s\n  actual: %.*s",
-            config.root_cert_sha256.size(), config.root_cert_sha256.data(),
+            "Root cert mismatch:\n  expect: %.*s\n  actual: %.*s",
+            mqtt_server.cert_sha256.size(), mqtt_server.cert_sha256.data(),
             sha.size(), sha.data()
           );
         }
       } else {
-        OK_ERROR("Bad %CMNG: %s", abbr(in_buf).c_str());
+        OK_ERROR("Bad input: %s", abbr(in_buf).c_str());
       }
       return;
     }
@@ -419,34 +377,32 @@ class CellModemClientDef : public CellModemClient {
       if (eat_int(&rest, &reg)) {
         status.running = (reg == 1 || reg == 2 || reg == 5);
         status.registered = (reg == 1 || reg == 5);
-        if (reg == 1) status.roaming = false;
-        if (reg == 5) status.roaming = true;
+        status.roaming = (reg == 5);
         if (reg == 3 || reg == 90) status.failed = true;
         if (status.running) status.failed = false;
         if (status.registered) status.reject_cause = 0;
+        if (!status.registered) status.ip_attached = false;
 
         etl::string_view op_full, op_short, op_mcc_mnc;
         etl::string_view cell_tac, cell_id;
         int cell_phys_id;
         int radio_tech, radio_band, radio_earfcn, radio_rsrp, radio_snr;
         etl::string_view power_edrx, power_atime, power_tau_ext, power_tau;
-        if (
-          eat(&rest, ",") && eat_quoted(&rest, &op_full) &&
-          eat(&rest, ",") && eat_quoted(&rest, &op_short) &&
-          eat(&rest, ",") && eat_quoted(&rest, &op_mcc_mnc) &&
-          eat(&rest, ",") && eat_quoted(&rest, &cell_tac) &&
-          eat(&rest, ",") && eat_int(&rest, &radio_tech) &&
-          eat(&rest, ",") && eat_int(&rest, &radio_band) &&
-          eat(&rest, ",") && eat_quoted(&rest, &cell_id) &&
-          eat(&rest, ",") && eat_int(&rest, &cell_phys_id) &&
-          eat(&rest, ",") && eat_int(&rest, &radio_earfcn) &&
-          eat(&rest, ",") && eat_int(&rest, &radio_rsrp) &&
-          eat(&rest, ",") && eat_int(&rest, &radio_snr) &&
-          eat(&rest, ",") && eat_quoted(&rest, &power_edrx) &&
-          eat(&rest, ",") && eat_quoted(&rest, &power_atime) &&
-          eat(&rest, ",") && eat_quoted(&rest, &power_tau_ext) &&
-          eat(&rest, ",") && eat_quoted(&rest, &power_tau)
-        ) {
+        if (eat(&rest, ",") && eat_quoted(&rest, &op_full) &&
+            eat(&rest, ",") && eat_quoted(&rest, &op_short) &&
+            eat(&rest, ",") && eat_quoted(&rest, &op_mcc_mnc) &&
+            eat(&rest, ",") && eat_quoted(&rest, &cell_tac) &&
+            eat(&rest, ",") && eat_int(&rest, &radio_tech) &&
+            eat(&rest, ",") && eat_int(&rest, &radio_band) &&
+            eat(&rest, ",") && eat_quoted(&rest, &cell_id) &&
+            eat(&rest, ",") && eat_int(&rest, &cell_phys_id) &&
+            eat(&rest, ",") && eat_int(&rest, &radio_earfcn) &&
+            eat(&rest, ",") && eat_int(&rest, &radio_rsrp) &&
+            eat(&rest, ",") && eat_int(&rest, &radio_snr) &&
+            eat(&rest, ",") && eat_quoted(&rest, &power_edrx) &&
+            eat(&rest, ",") && eat_quoted(&rest, &power_atime) &&
+            eat(&rest, ",") && eat_quoted(&rest, &power_tau_ext) &&
+            eat(&rest, ",") && eat_quoted(&rest, &power_tau)) {
           status.op_mcc = etl::to_arithmetic<uint16_t>(op_mcc_mnc.substr(0, 3));
           status.op_mnc = etl::to_arithmetic<uint16_t>(op_mcc_mnc.substr(3, 3));
           status.cell_tac = etl::to_arithmetic<uint16_t>(cell_tac, etl::hex);
@@ -459,57 +415,91 @@ class CellModemClientDef : public CellModemClient {
           status.radio_snr = radio_snr == 127 ? -0x8000 : radio_snr - 25;
         }
       }
-      if (!eat(&rest, "")) OK_ERROR("Bad %XMONITOR: %s", abbr(in_buf).c_str());
+      if (!eat(&rest, "")) OK_ERROR("Bad input: %s", abbr(in_buf).c_str());
       return;
     }
 
     if (eat(&rest, "#XMQTTCON:")) {
+      etl::string_view cid, host;
+      int port, sec_tag = -1;
       if (eat(&rest, "0")) {
-        if (mqtt_state <= MqttState::OK_TO_DISCONNECT) {
-          mqtt_state = MqttState::OK_TO_CONFIG;
-        } else if (mqtt_state >= MqttState::CONNECT_WAIT) {
-          OK_ERROR("MQTT disconnected, reconnecting");
-          mqtt_state = MqttState::OK_TO_CONFIG;
+        if (mqtt_state >= MqttState::CONNECT_WAIT) {
+          OK_ERROR("MQTT not connected, reconnecting");
+          mqtt_state = MqttState::OK_TO_DISCONNECT;  // Recommended by Nordic
         }
-      } else if (eat(&rest, "1")) {
-        etl::string_view cid, host;
-        int port, sec_tag = -1;
-        if (
-          eat(&rest, ",") && eat_quoted(&rest, &cid) &&
-          eat(&rest, ",") && eat_quoted(&rest, &host) &&
-          eat(&rest, ",") && eat_int(&rest, &port) &&
-          ((eat(&rest, ",") && eat_int(&rest, &sec_tag)) || true)
-        ) {
-          int const config_sec = config.root_cert.empty() ? -1 : 0;
-          if (
-            host != config.mqtt_server || port != config.mqtt_port ||
-            cid != status.imeisv || sec_tag != config_sec
-          ) {
-            OK_ERROR(
-              "Bad MQTT host:\n  %.*s:%d[%d] (%.*s) !=\n  %.*s:%d[%d] (%.*s)",
-              host.size(), host.data(), port, sec_tag, cid.size(), cid.data(),
-              config.mqtt_server.size(), config.mqtt_server.data(),
-              config.mqtt_port, config_sec,
-              status.imeisv.size(), status.imeisv.data()
-            );
+      } else if (eat(&rest, "1") &&
+                 eat(&rest, ",") && eat_quoted(&rest, &cid) &&
+                 eat(&rest, ",") && eat_quoted(&rest, &host) &&
+                 eat(&rest, ",") && eat_int(&rest, &port) &&
+                 ((eat(&rest, ",") && eat_int(&rest, &sec_tag)) || true)) {
+        int const config_sec = mqtt_server.cert.empty() ? -1 : 0;
+        if (mqtt_state > MqttState::OK_TO_DISCONNECT &&
+            mqtt_state < MqttState::CONNECT_WAIT) {
+          OK_ERROR("Unexpected MQTT connection: %s", abbr(in_buf).c_str());
+          mqtt_state = MqttState::OK_TO_DISCONNECT;
+        } else if (host != mqtt_server.host || port != mqtt_server.port ||
+                   cid != status.imeisv || sec_tag != config_sec) {
+          OK_ERROR(
+            "Bad MQTT link:\n  %.*s:%d[%d] (%.*s) !=\n  %.*s:%d[%d] (%.*s)",
+            host.size(), host.data(), port, sec_tag, cid.size(), cid.data(),
+            mqtt_server.host.size(), mqtt_server.host.data(),
+            mqtt_server.port, config_sec,
+            status.imeisv.size(), status.imeisv.data()
+          );
+          mqtt_state = MqttState::OK_TO_DISCONNECT;
+        }
+      }
+      if (!eat(&rest, "")) OK_ERROR("Bad input: %s", abbr(in_buf).c_str());
+      return;
+    }
+
+    if (eat(&rest, "#XMQTTEVT:")) {
+      int type, err;
+      if (eat_int(&rest, &type) && eat(&rest, ",") && eat_int(&rest, &err)) {
+        if (type == 0) {  // CONNACK (or connection failed)
+          if (err != 0) {
+            // Connection failed - this could be stale; trigger a poll
+            OK_ERROR("MQTT connect failed: %s", abbr(in_buf).c_str());
+            if (mqtt_state >= MqttState::CONNECT_WAIT) do_poll_mqtt = true;
+          } else if (mqtt_state == MqttState::CONNECT_WAIT) {
+            mqtt_state = MqttState::CONNECTED;  // CONNACK confirmed!
+          } else {
+            OK_ERROR("Unexpected MQTT CONNACK: %s", abbr(in_buf).c_str());
             mqtt_state = MqttState::OK_TO_DISCONNECT;
           }
+        } else if (type == 1) {  // Disconnected
+          // This could be stale; trigger a poll
+          if (mqtt_state >= MqttState::CONNECT_WAIT) do_poll_mqtt = true;
+        } else if (type == 2) {  // PUBLISH
+          // no action; #XMQTTMSG carries the actual message
+        } else if (type == 3) {  // PUBACK
+          // no action; we onyl use QoS-0 fire and forget
+        } else if (type == 7) {  // SUBACK
+          if (mqtt_state != MqttState::SUBSCRIBE_WAIT) {
+            OK_ERROR("Unexpected MQTT SUBACK: %s", abbr(in_buf).c_str());
+          } else if (err != 0) {
+            OK_ERROR("MQTT subscribe failed: %s", abbr(in_buf).c_str());
+            mqtt_state = MqttState::OK_TO_DISCONNECT;  // try again?
+          } else {
+            ++mqtt_subscribed;
+            mqtt_state = MqttState::CONNECTED;
+          }
+        } else if (type == 9) {  // PINGRESP
+          // no action; the MQTT client tracks staleness
         } else {
-          OK_ERROR("Bad #XMQTTCON data: %s", abbr(in_buf).c_str());
+          // remaining types are related to QoS-2 messages, etc.
+          OK_ERROR("Unexpected #XMQTTEVT: %s", abbr(in_buf).c_str());
         }
-      } else {
-        OK_ERROR("Bad #XMQTTCON status: %s", abbr(in_buf).c_str());
       }
+      if (!eat(&rest, "")) OK_ERROR("Bad #XMQTTEVT: %s", abbr(in_buf).c_str());
       return;
     }
 
     if (eat(&rest, "#XSMVER:")) {
       etl::string_view v1, v2, v3;
-      if (
-        eat_quoted(&rest, &v1) &&
-        eat(&rest, ",") && eat_quoted(&rest, &v2) &&
-        eat(&rest, ",") && eat_quoted(&rest, &v3)
-      ) {
+      if (eat_quoted(&rest, &v1) &&
+          eat(&rest, ",") && eat_quoted(&rest, &v2) &&
+          eat(&rest, ",") && eat_quoted(&rest, &v3)) {
         status.versions[1] = v1.empty() ? "-" : v1;
         status.versions[2] = v2.empty() ? "-" : v2;
         status.versions[3] = v3.empty() ? "-" : v3;
@@ -533,6 +523,9 @@ class CellModemClientDef : public CellModemClient {
         status.hardware = "-";
       } else if (state == CommandState::AT_CGMR_WAIT) {
         status.versions[0] = "-";
+      } else if (state == CommandState::AT_CGPADDR_WAIT) {
+        status.ip_attached = false;  // +CGPADDR completed, no IPs found
+        status.ip_addr = 0;
       } else if (state != CommandState::OK_WAIT) {
         OK_ERROR("Unexpected OK (state=%d): %s", state, abbr(in_buf).c_str());
       }
@@ -577,36 +570,38 @@ class CellModemClientDef : public CellModemClient {
   }
 
   static bool eat(etl::string_view* str, etl::string_view literal) {
-    auto view = etl::trim_view_whitespace_left(*str);
-    if (literal.empty()) return view.empty();  // special case for EOL
-    if (!view.starts_with(literal)) return false;
-    *str = view.substr(literal.size());
+    auto v = etl::trim_view_whitespace_left(*str);
+    if (literal.empty()) return v.empty();  // special case for EOL
+    if (!v.starts_with(literal)) return false;
+    *str = v.substr(literal.size());
     return true;
   }
 
   static bool eat_int(etl::string_view* str, int* out) {
-    auto view = etl::trim_view_whitespace_left(*str);
-    auto const len = view.find_first_not_of("0123456789");
-    if (len <= 0) return false;
-    *out = etl::to_arithmetic<int>(view.substr(0, len));
-    *str = view.substr(len);
+    auto v = etl::trim_view_whitespace_left(*str);
+    auto const end = v.find_first_not_of("0123456789", v.starts_with("-"));
+    auto const result = etl::to_arithmetic<int>(v.substr(0, end));
+    if (!result) return false;
+    *out = result.value();
+    *str = (end == etl::string_view::npos) ? "" : v.substr(end);
     return true;
   }
 
   static bool eat_quoted(etl::string_view* str, etl::string_view* out) {
-    auto view = *str;
-    if (!eat(&view, "\"")) return false;
-    auto const end = view.find('"');
+    auto v = *str;
+    if (!eat(&v, "\"")) return false;
+    auto const end = v.find('"');
     if (end == etl::string_view::npos) return false;
-    *out = view.substr(0, end);
-    *str = view.substr(end + 1);
+    *out = v.substr(0, end);
+    *str = v.substr(end + 1);
     return true;
   }
 };
 
 etl::unique_ptr<CellModemClient> make_cell_modem_client(
-  arduino::HardwareSerial* serial, CellModemConfig const& config
+  arduino::HardwareSerial* serial,
+  MqttServerConfig const& server,
+  etl::span<etl::string_view const> subs
 ) {
-  OK_FATAL_IF(serial == nullptr);
-  return etl::unique_ptr(new CellModemClientDef(serial, config));
+  return etl::unique_ptr(new CellModemClientDef(serial, server, subs));
 }

@@ -3,16 +3,16 @@
 
 #pragma once
 
+#include <etl/span.h>
 #include <etl/string.h>
 #include <memory>
 
 namespace arduino { class HardwareSerial; }
 
-struct CellModemConfig {
-  etl::string_view root_cert;
-  etl::string_view root_cert_sha256;
-  etl::string_view mqtt_server, mqtt_user, mqtt_password;
-  int mqtt_port;
+struct MqttServerConfig {
+  etl::string_view cert, cert_sha256;
+  etl::string_view host, user, password;
+  int port;
 };
 
 struct CellModemStatus {
@@ -31,7 +31,7 @@ struct CellModemStatus {
   uint8_t reject_cause = 0;
 
   // packet network status
-  bool ip_attached = false;
+  bool ip_attached = false, mqtt_connected = false, mqtt_subscribed = false;
   uint32_t ip_addr = 0;
 };
 
@@ -43,5 +43,6 @@ class CellModemClient {
 
 etl::unique_ptr<CellModemClient> make_cell_modem_client(
   arduino::HardwareSerial* serial,
-  CellModemConfig const& config
+  MqttServerConfig const& mqtt_config,
+  etl::span<etl::string_view const> mqtt_subs
 );
