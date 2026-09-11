@@ -1,10 +1,12 @@
 #include <Arduino.h>
 #include <etl/chrono.h>
+#include <etl/format.h>
 #include <etl/vector.h>
 #include <ok_logging.h>
 #include <ok_little_layout.h>
 #include <ok_micro_dock.h>
 
+#include <blub_clock.h>
 #include <blub_mqtt_config.h>
 #include <cell_modem_client.h>
 
@@ -18,15 +20,16 @@ etl::unique_ptr<CellModemClient> cell_modem;
 
 static steady_clock::time_point last_loop_time = {};
 static steady_clock::time_point next_print_time = {};
+static steady_clock::time_point next_publish_time = {};
+
+int counter;
+etl::string<256> message;
 
 void loop() {
-  auto const loop_time = etl::chrono::steady_clock::now();
-  if (last_loop_time.time_since_epoch().count() > 0) {
+  auto const loop_time = steady_clock::now();
+  if (last_loop_time > steady_clock::time_point{}) {
     auto const delay = loop_time - last_loop_time;
-    if (delay > 1_ms) {
-      auto const msec = duration_cast<duration<long, etl::milli>>(delay);
-      OK_NOTE("loop time %ld ms", msec.count());
-    }
+    if (delay > 1_ms) OK_NOTE("loop time %lld ms", raw_count<millis64>(delay));
   }
 
   auto const status = cell_modem->poll();
@@ -82,12 +85,19 @@ void loop() {
     if (status.ip_attached) {
       OK_NOTE(
         "🌐 IP: %d.%d.%d.%d %s", ip[0], ip[1], ip[2], ip[3],
-        status.mqtt_subscribed ? "🗨️ MQTT subscribed" :
-        status.mqtt_connected ? "💬 MQTT connecting" : "⛓️‍💥 MQTT disconnected"
+        status.mqtt_publish_busy ? "💬 MQTT busy" :
+        status.mqtt_ready ? "🗨️ MQTT ready" : "⛓️‍💥 MQTT unready"
       );
     } else {
       OK_NOTE("⭕ No IP attached");
     }
+  }
+
+  if (loop_time > next_publish_time &&
+      status.mqtt_ready && !status.mqtt_publish_busy) {
+    next_publish_time = loop_time + 1_s;
+    etl::format_to(message, "Hello from BLUB cell_bench: {}", counter++);
+    cell_modem->publish({"cell_bench/pub", message});
   }
 
   last_loop_time = loop_time;
@@ -107,7 +117,8 @@ void setup() {
 
   Serial1.setTX(12);
   Serial1.setRX(13);
+  Serial1.setFIFOSize(2048);
   Serial1.begin(115200);
-  static const etl::string_view subs[] = {"cell_bench"};
+  static const etl::string_view subs[] = {"cell_bench/sub"};
   cell_modem = make_cell_modem_client(&Serial1, blub_mqtt_config, subs);
 }

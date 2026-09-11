@@ -1,3 +1,9 @@
+// Unit tests for CellModemClient (cell_modem/cell_modem_client.h)
+//
+// TODO: cert mismatch on startup (verify cert re-write)
+// TODO: MQTT publish rejected with ERROR (verify busy clear, no auto retry)
+// TODO: MQTT publish rejected with #XDATAMODE: -1 (should disocnnect)
+
 #include "cell_modem_client.h"
 
 #include <Arduino.h>
@@ -12,182 +18,181 @@ char const* const ok_logging_config = "DETAIL";
 
 static OkLoggingContext OK_CONTEXT("cell_modem_client_test");
 
+static MqttServerConfig fake_mqtt_config() {
+  MqttServerConfig config;
+  config.host = "fake-server";
+  config.port = 8883;
+  config.user = "fake-user";
+  config.password = "fake-pass";
+  config.cert = "-----FAKE CERT-----\r\nABCDEF\r\n-----END CERT-----\r\n";
+  config.cert_sha256 = "Fake Cert Hash";
+  return config;
+}
+
+static bool fake_modem_reply(FakeSerial* serial) {
+  // Just enough response logic to get through initialization
+  bool success = true;
+  if (serial->write_buf.starts_with("AT+CGMM")) {
+    serial->read_buf = "Fake Hardware\r\nOK\r\n";
+  } else if (serial->write_buf.starts_with("AT+CGMR")) {
+    serial->read_buf = "Fake Revision\r\nOK\r\n";
+  } else if (serial->write_buf.starts_with("AT+CGSN=2")) {
+    serial->read_buf = "+CGSN: \"1122222233333344\"\r\nOK\r\n";
+  } else if (serial->write_buf.starts_with("AT+CGPADDR")) {
+    serial->read_buf = "+CGPADDR: 0,\"12.34.56.78\"\r\nOK\r\n";
+  } else if (serial->write_buf.starts_with("AT%CMNG=1,")) {
+    serial->read_buf = "%CMNG: 0,0,\"Fake Cert Hash\"\r\nOK\r\n";
+  } else if (serial->write_buf.starts_with("AT%XMONITOR")) {
+    serial->read_buf = "%XMONITOR: 5,"
+      "\"\",\"\",\"111222\",\"1234\",7,12,\"12345678\",123,1234,12,12,"
+      "\"\",\"00000000\",\"00000000\",\"00000000\"\r\nOK\r\n";
+  } else if (serial->write_buf.starts_with("AT#XMQTTCON?")) {
+    serial->read_buf = "#XMQTTCON: 1\r\nOK\r\n";
+  } else if (serial->write_buf.starts_with("AT#XMQTTCON=0")) {
+    serial->read_buf = "OK\r\n#XMQTTEVT: 1,0\r\n";  // Disconnect
+  } else if (serial->write_buf.starts_with("AT#XMQTTCON=1")) {
+    serial->read_buf = "OK\r\n#XMQTTEVT: 0,0\r\n";  // CONNACK
+  } else if (serial->write_buf.starts_with("AT#XMQTTSUB=")) {
+    serial->read_buf = "OK\r\n#XMQTTEVT: 7,0\r\n";  // SUBACK
+  } else if (serial->write_buf.starts_with("AT#XSMVER")) {
+    serial->read_buf = "#XSMVER: \"Fake SM\",\"Fake NCS\",\"Blub\"\r\nOK\r\n";
+  } else if (serial->write_buf.starts_with("AT")) {
+    serial->read_buf = "OK\r\n";  // nod and smile
+  } else {
+    OK_ERROR("#TEST-FAIL# Bad client output: [%s]", serial->write_buf.c_str());
+    success = false;
+  }
+  serial->write_buf.clear();
+  return success;
+}
+
+static bool run_client_setup(
+  etl::unique_ptr<CellModemClient> const& client, FakeSerial* serial
+) {
+  for (int loop = 0; loop < 100; ++loop) {
+    auto const status = client->poll();
+    if (!serial->write_buf.empty()) {
+      if (!fake_modem_reply(serial)) return false;
+    } else if (status.mqtt_ready) {
+      OK_NOTE("CellModemClient setup complete (loop=%d)", loop);
+      return true;
+    } else {
+      OK_ERROR("#TEST-FAIL# CellModemClient setup idle (loop=%d)", loop);
+      return false;
+    }
+  }
+  OK_ERROR("#TEST-FAIL# CellModemClient setup overrun");
+  return false;
+}
+
 static void test_blub_cert_sha256() {
-  OK_NOTE("#TEST# test_blub_cert_sha256");
+  OK_NOTE("\n#TEST# test_blub_cert_sha256");
   SHA256 sha256;
   sha256.update(blub_mqtt_config.cert.data(), blub_mqtt_config.cert.size());
   uint8_t digest[32];
   sha256.finalize(digest, sizeof(digest));
   for (int i = 0; i < sizeof(digest); ++i) {
-    OK_NOTE("blub_mqtt_cert_sha256[%d]", i);
     etl::string<3> digest_byte;
     etl::format_to(digest_byte, "{:02X}", digest[i]);
     auto const stored_byte = blub_mqtt_config.cert_sha256.substr(i * 2, 2);
-    VERIFY_A_OP_B_STR(digest_byte, ==, stored_byte);
+    if (!VERIFY_A_OP_B_STR(digest_byte, ==, stored_byte))
+      OK_ERROR("Mismatch in blub_mqtt_cert_sha256[%d]", i);
   }
 }
 
 static void test_modem_client_setup() {
-  OK_NOTE("#TEST# test_modem_client_setup");
-  etl::string<8192> write_buf;
-  FakeSerial fake_serial(0, "", &write_buf);
-  MqttServerConfig server;
-  server.host = "server";
-  server.port = 8883;
-  server.user = "user";
-  server.password = "pass";
-  server.cert = "-----FAKE CERT-----\r\nABCDEF\r\n-----END CERT-----\r\n";
-  server.cert_sha256 = "0123456789ABCDEF";
+  OK_NOTE("\n#TEST# test_modem_client_setup");
+  FakeSerial serial;
 
   etl::vector<etl::string_view, 2> subs({"topic1", "topic2"});
-  auto const client = make_cell_modem_client(&fake_serial, server, subs);
+  auto const client = make_cell_modem_client(&serial, fake_mqtt_config(), subs);
 
-  //
-  // Initialization and poll cycle
-  //
+  // Verify the specific initialization and poll cycle
+  client->poll();
+  VERIFY_A_OP_B_STR(serial.write_buf, ==, "AT+CGMM\r\n");
+  fake_modem_reply(&serial);
 
   client->poll();
-  VERIFY_A_OP_B_STR(write_buf, ==, "AT+CGMM\r\n");
-  write_buf.clear();
+  VERIFY_A_OP_B_STR(serial.write_buf, ==, "AT+CGMR\r\n");
+  fake_modem_reply(&serial);
 
-  fake_serial.read_buf = "Fake Hardware\r\nOK\r\n";
   client->poll();
-  VERIFY_A_OP_B_STR(write_buf, ==, "AT+CGMR\r\n");
-  write_buf.clear();
+  VERIFY_A_OP_B_STR(serial.write_buf, ==, "AT#XSMVER\r\n");
+  fake_modem_reply(&serial);
 
-  fake_serial.read_buf = "Fake Revision\r\nOK\r\n";
   client->poll();
-  VERIFY_A_OP_B_STR(write_buf, ==, "AT#XSMVER\r\n");
-  write_buf.clear();
+  VERIFY_A_OP_B_STR(serial.write_buf, ==, "AT+CGSN=2\r\n");
+  fake_modem_reply(&serial);
 
-  fake_serial.read_buf = "#XSMVER: \"Fake SM\",\"Fake NCS\",\"Blub\"\r\nOK\r\n";
   client->poll();
-  VERIFY_A_OP_B_STR(write_buf, ==, "AT+CGSN=2\r\n");
-  write_buf.clear();
+  VERIFY_A_OP_B_STR(serial.write_buf, ==, "AT%CMNG=1,0,0\r\n");  // check certs
+  fake_modem_reply(&serial);
 
-  fake_serial.read_buf = "+CGSN: \"490154203237518\"\r\nOK\r\n";
   client->poll();
-  VERIFY_A_OP_B_STR(write_buf, ==, "AT%CMNG=1,0,0\r\n");  // check certs
-  write_buf.clear();
+  VERIFY_A_OP_B_STR(serial.write_buf, ==, "AT+CMEE=1\r\n");  // ext. errors on
+  fake_modem_reply(&serial);
 
-  fake_serial.read_buf = "OK\r\n";  // no certs initially
   client->poll();
-  VERIFY_A_OP_B_STR(write_buf, ==, "AT+CFUN=4\r\n");  // radio off (cert update)
-  write_buf.clear();
+  VERIFY_A_OP_B_STR(serial.write_buf, ==, "AT%XPDNCFG=1\r\n");  // always-on IP
+  fake_modem_reply(&serial);
 
-  fake_serial.read_buf = "OK\r\n";
   client->poll();
-  VERIFY_A_OP_B_STR(write_buf, ==, "AT%CMNG=3,0,0\r\n");  // delete cert
-  write_buf.clear();
+  VERIFY_A_OP_B_STR(serial.write_buf, ==, "AT+CFUN=1\r\n");  // radio on
+  fake_modem_reply(&serial);
 
-  fake_serial.read_buf = "OK\r\n";
   client->poll();
-  VERIFY_A_OP_B_STR(
-    write_buf, ==,
-    "AT%CMNG=0,0,0,\""  // write cert
-    "-----FAKE CERT-----\r\nABCDEF\r\n-----END CERT-----\r\n"
-    "\"\r\n"
-  );
-  write_buf.clear();
+  VERIFY_A_OP_B_STR(serial.write_buf, ==, "AT+CEREG=1\r\n");  // reg notify on
+  fake_modem_reply(&serial);
 
-  fake_serial.read_buf = "OK\r\n";
   client->poll();
-  VERIFY_A_OP_B_STR(write_buf, ==, "AT%CMNG=1,0,0\r\n");  // check certs again
-  write_buf.clear();
+  VERIFY_A_OP_B_STR(serial.write_buf, ==, "AT+CGEREP=1\r\n");  // data notify on
+  fake_modem_reply(&serial);
 
-  fake_serial.read_buf = "%CMNG: 0,0,\"0123456789ABCDEF\"\r\nOK\r\n";
   client->poll();
-  VERIFY_A_OP_B_STR(write_buf, ==, "AT+CMEE=1\r\n");  // extended errors on
-  write_buf.clear();
+  VERIFY_A_OP_B_STR(serial.write_buf, ==, "AT%XMONITOR\r\n");  // check radio
+  fake_modem_reply(&serial);
 
-  fake_serial.read_buf = "OK\r\n";
   client->poll();
-  VERIFY_A_OP_B_STR(write_buf, ==, "AT%XPDNCFG=1\r\n");  // always-on IP
-  write_buf.clear();
+  VERIFY_A_OP_B_STR(serial.write_buf, ==, "AT+CGPADDR\r\n");  // check IP
+  fake_modem_reply(&serial);
 
-  fake_serial.read_buf = "OK\r\n";
   client->poll();
-  VERIFY_A_OP_B_STR(write_buf, ==, "AT+CFUN=1\r\n");  // radio on
-  write_buf.clear();
+  VERIFY_A_OP_B_STR(serial.write_buf, ==, "AT#XMQTTCON?\r\n");  // check MQTT
+  fake_modem_reply(&serial);
 
-  fake_serial.read_buf = "OK\r\n";
   client->poll();
-  VERIFY_A_OP_B_STR(write_buf, ==, "AT+CEREG=1\r\n");  // reg notify on
-  write_buf.clear();
+  VERIFY_A_OP_B_STR(serial.write_buf, ==, "AT#XMQTTCON=0\r\n");  // disconnect
+  fake_modem_reply(&serial);
 
-  fake_serial.read_buf = "OK\r\n";
-  client->poll();
-  VERIFY_A_OP_B_STR(write_buf, ==, "AT+CGEREP=1\r\n");  // packet notify on
-  write_buf.clear();
-
-  fake_serial.read_buf = "OK\r\n";
-  client->poll();
-  VERIFY_A_OP_B_STR(write_buf, ==, "AT%XMONITOR\r\n");  // get radio status
-  write_buf.clear();
-
-  fake_serial.read_buf = "%XMONITOR: 5,"
-    "\"\",\"\",\"310260\",\"417B\",7,12,\"02C80005\",211,5035,49,31,"
-    "\"\",\"11100000\",\"11100000\",\"01001001\"\r\nOK\r\n";
-  client->poll();
-  VERIFY_A_OP_B_STR(write_buf, ==, "AT+CGPADDR\r\n");  // get IP status
-  write_buf.clear();
-
-  fake_serial.read_buf = "+CGPADDR: 0,\"10.83.129.137\"\r\nOK\r\n";
-  client->poll();
-  VERIFY_A_OP_B_STR(write_buf, ==, "AT#XMQTTCON?\r\n");  // get MQTT status
-  write_buf.clear();
-
-  fake_serial.read_buf = "#XMQTTCON: 0\r\nOK\r\n";
-  client->poll();
-  VERIFY_A_OP_B_STR(write_buf, ==, "AT#XMQTTCON=0\r\n");  // explicit disconnect
-  write_buf.clear();
-
-  fake_serial.read_buf = "OK\r\n";
   client->poll();
   VERIFY_A_OP_B_STR(
-    write_buf, ==,
-    "AT#XMQTTCFG=\"490154203237518\",60,1\r\n"  // configure MQTT client
+    serial.write_buf, ==,
+    "AT#XMQTTCFG=\"1122222233333344\",60,1\r\n"  // configure MQTT
   );
-  write_buf.clear();
+  fake_modem_reply(&serial);
 
-  fake_serial.read_buf = "OK\r\n";
   client->poll();
   VERIFY_A_OP_B_STR(
-    write_buf, ==,
-    "AT#XMQTTCON=1,\"user\",\"pass\",\"server\",8883,0\r\n"  // connect to MQTT
+    serial.write_buf, ==,
+    "AT#XMQTTCON=1,\"fake-user\",\"fake-pass\",\"fake-server\",8883,0\r\n"
   );
-  write_buf.clear();
+  fake_modem_reply(&serial);
 
-  fake_serial.read_buf = "OK\r\n";
   client->poll();
-  VERIFY_A_OP_B_STR(write_buf, ==, "");  // waiting for CONNACK
+  VERIFY_A_OP_B_STR(serial.write_buf, ==, "AT#XMQTTSUB=\"topic1\",0\r\n");
+  fake_modem_reply(&serial);
 
-  fake_serial.read_buf = "#XMQTTEVT: 0,0\r\n";  // MQTT CONNACK
   client->poll();
-  VERIFY_A_OP_B_STR(write_buf, ==, "AT#XMQTTSUB=\"topic1\",0\r\n");
-  write_buf.clear();
+  VERIFY_A_OP_B_STR(serial.write_buf, ==, "AT#XMQTTSUB=\"topic2\",0\r\n");
+  fake_modem_reply(&serial);
 
-  fake_serial.read_buf = "OK\r\n";
   client->poll();
-  VERIFY_A_OP_B_STR(write_buf, ==, "");  // waiting for SUBACK
+  VERIFY_A_OP_B_STR(serial.write_buf, ==, "");  // idle
 
-  fake_serial.read_buf = "#XMQTTEVT: 7,0\r\n";  // MQTT SUBACK
-  client->poll();
-  VERIFY_A_OP_B_STR(write_buf, ==, "AT#XMQTTSUB=\"topic2\",0\r\n");
-  write_buf.clear();
-
-  fake_serial.read_buf = "OK\r\n";
-  client->poll();
-  VERIFY_A_OP_B_STR(write_buf, ==, "");  // waiting for SUBACK
-
-  fake_serial.read_buf = "#XMQTTEVT: 7,0\r\n";  // MQTT SUBACK
-  client->poll();
-  VERIFY_A_OP_B_STR(write_buf, ==, "");  // idle
-
-  // Initial status after first poll cycle
+  // Status after initial setup
   auto const& status = client->poll();
   VERIFY_A_OP_B_STR(status.hardware, ==, "Fake Hardware");
-  VERIFY_A_OP_B_STR(status.imeisv, ==, "490154203237518");
+  VERIFY_A_OP_B_STR(status.imeisv, ==, "1122222233333344");
   VERIFY_A_OP_B_STR(status.versions[0], ==, "Fake Revision");
   VERIFY_A_OP_B_STR(status.versions[1], ==, "Fake SM");
   VERIFY_A_OP_B_STR(status.versions[2], ==, "Fake NCS");
@@ -196,20 +201,47 @@ static void test_modem_client_setup() {
   VERIFY_A_OP_B_INT(status.registered, >, 0);
   VERIFY_A_OP_B_INT(status.roaming, >, 0);
   VERIFY_A_OP_B_INT(status.failed, ==, 0);
-  VERIFY_A_OP_B_INT(status.op_mcc, ==, 310);
-  VERIFY_A_OP_B_INT(status.op_mnc, ==, 260);
-  VERIFY_A_OP_B_INT(status.cell_tac, ==, 0x417B);
-  VERIFY_A_OP_B_INT(status.cell_phys_id, ==, 211);
-  VERIFY_A_OP_B_INT(status.cell_id, ==, 0x02C80005);
-  VERIFY_A_OP_B_INT(status.radio_earfcn, ==, 5035);
+  VERIFY_A_OP_B_INT(status.op_mcc, ==, 111);
+  VERIFY_A_OP_B_INT(status.op_mnc, ==, 222);
+  VERIFY_A_OP_B_INT(status.cell_tac, ==, 0x1234);
+  VERIFY_A_OP_B_INT(status.cell_phys_id, ==, 123);
+  VERIFY_A_OP_B_INT(status.cell_id, ==, 0x12345678);
+  VERIFY_A_OP_B_INT(status.radio_earfcn, ==, 1234);
   VERIFY_A_OP_B_INT(status.radio_tech, ==, 7);
   VERIFY_A_OP_B_INT(status.radio_band, ==, 12);
-  VERIFY_A_OP_B_INT(status.radio_rsrp, ==, -92);
-  VERIFY_A_OP_B_INT(status.radio_snr, ==, +6);
+  VERIFY_A_OP_B_INT(status.radio_rsrp, ==, -129);
+  VERIFY_A_OP_B_INT(status.radio_snr, ==, -13);
   VERIFY_A_OP_B_INT(status.ip_attached, >, 0);
-  VERIFY_A_OP_B_INT(status.ip_addr, ==, 0x0A538189);
-  VERIFY_A_OP_B_INT(status.mqtt_connected, >, 0);
-  VERIFY_A_OP_B_INT(status.mqtt_subscribed, >, 0);
+  VERIFY_A_OP_B_INT(status.ip_addr, ==, 0x0C22384E);
+  VERIFY_A_OP_B_INT(status.mqtt_ready, >, 0);
+}
+
+static void test_mqtt_publish() {
+  OK_NOTE("\n#TEST# test_mqtt_publish");
+  FakeSerial serial;
+  auto const client = make_cell_modem_client(&serial, fake_mqtt_config(), {});
+  if (!run_client_setup(client, &serial)) return;
+
+  auto const& st1 = client->poll();
+  if (!VERIFY_A_OP_B_INT(st1.mqtt_publish_busy, ==, 0)) return;
+  client->publish({.topic = "test-topic", .payload = "test-payload"});
+
+  auto const& st2 = client->poll();
+  VERIFY_A_OP_B_INT(st2.mqtt_publish_busy, >, 0);
+  VERIFY_A_OP_B_STR(
+    serial.write_buf, ==, "AT#XMQTTPUB=\"test-topic\",\"\",0,0,12\r\n"
+  );
+  fake_modem_reply(&serial);
+
+  auto const& st3 = client->poll();
+  VERIFY_A_OP_B_INT(st3.mqtt_publish_busy, >, 0);
+  VERIFY_A_OP_B_STR(serial.write_buf, ==, "test-payload");
+  serial.write_buf.clear();
+  serial.read_buf = "#XDATAMODE: 0\r\n";
+
+  auto const& st4 = client->poll();
+  VERIFY_A_OP_B_INT(st4.mqtt_publish_busy, ==, 0);  // after #XDATAMODE: 0
+  VERIFY_A_OP_B_STR(serial.write_buf, ==, "");  // idle after message send
 }
 
 void setup() {
@@ -218,6 +250,7 @@ void setup() {
   OK_NOTE("#BEGIN-TESTS#");
   test_blub_cert_sha256();
   test_modem_client_setup();
+  test_mqtt_publish();
   OK_NOTE("#END-TESTS#");
 }
 

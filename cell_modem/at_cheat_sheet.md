@@ -91,7 +91,7 @@ mutual TLS. PEM must use CRLF line endings.
 | `AT#XMQTTUNSUB="<topic>"` | `OK` then `#XMQTTEVT: 8,<r>` | Not CONNACKed — *yet*, or *any more* | |
 | `AT#XMQTTPUB="<topic>","<msg>",<qos>,<retain>` | `OK` | Not CONNACKed, or bad `<qos>`/`<retain>` | Inline. Only safe if the payload has no `,` `"` CR or LF |
 | `AT#XMQTTPUB="<topic>","",<qos>,<retain>` | `OK`, enters data mode | as above | Then payload, then terminator |
-| `AT#XMQTTPUB="<topic>","",<qos>,<retain>,<len>` | `OK`, enters data mode | as above, plus `<len>` > `CONFIG_SM_DATAMODE_BUF_SIZE` | Counted — no terminator, no escaping. Upstream PR #381, now in the fork |
+| `AT#XMQTTPUB="<topic>","",<qos>,<retain>,<len>` | `OK`, enters data mode, then `#XDATAMODE: 0` once `<len>` bytes are in | as above, plus `<len>` > `CONFIG_SM_DATAMODE_BUF_SIZE` (8192 exactly is fine) | Counted — no terminator, no escaping. `<len>` = 0 falls back to terminator mode. Upstream PR #381, now in the fork. See *Data mode* for the idle-timer trap |
 
 **It is always a bare `ERROR`, never `+CME ERROR`.** `sm_at_cb_wrapper()` only
 reconstructs `+CME`/`+CMS ERROR` when a handler returns a *positive* value (the
@@ -276,8 +276,34 @@ accumulating ghosts.
 
 ### Data mode
 
-Entered by any `#XMQTTPUB` with an empty `<msg>`. Exit by sending the
-terminator, or automatically once `<len>` bytes arrive (PR #381 path).
+Entered by any `#XMQTTPUB` with an empty `<msg>`. The `OK` is sent *after*
+`enter_datamode()` runs inside the command handler, so payload bytes may follow
+the `OK` immediately. Exit by sending the terminator, or automatically once
+`<len>` bytes arrive (PR #381 path). Either way the exit is announced by
+`#XDATAMODE: <r>` via `rsp_send()` (immediate, not queued): `0` means the
+payload was handed to `mqtt_publish()`, `-1` means the send failed. There is
+no further `OK`.
+
+Counted mode, verified in `sm_at_host.c` / `sm_at_mqtt.c`:
+
+* `<len>` is checked against `CONFIG_SM_DATAMODE_BUF_SIZE` up front and
+  rejected with `ERROR` if larger. Up to and including 8192 is accepted.
+* The whole payload accumulates in the data-mode ring (reset to empty on
+  entry) and goes out as **one** `mqtt_publish()` when the count hits zero.
+  So the exact bound is 8192, not "well under" — that advice is for
+  terminator mode, where a full ring flushes mid-stream with `MORE_DATA`
+  set, which the MQTT handler rejects with `-EOVERFLOW`.
+* `<len>` = 0 is *not* an empty publish: it selects terminator mode. An empty
+  MQTT payload cannot be published through the counted path.
+* **⚠ The data-mode inactivity timer still runs in counted mode.** Every
+  received byte restarts `data_inactivity_timer`; when it fires with data in
+  the ring, `raw_send_scheduled()` publishes whatever has arrived as a
+  complete MQTT message, and the rest becomes a *second* message when the
+  count completes. The period is
+  `CONFIG_SM_UART_RX_BUF_SIZE × 10 bits × 1000 / baud + UART_RX_MARGIN_MS`
+  = 2048 × 10 × 1000 / 115200 + 10 ≈ **187 ms**. The host must never pause
+  longer than that between payload bytes, and nothing reports the split
+  afterwards. (`AT#XDATACTRL=<ms>` can only raise it.)
 
 ## URCs
 
@@ -425,8 +451,17 @@ The traps: **ECONNABORTED is 113, not Linux's 103** (this is what a firmware-sid
 
 `#XMQTTMSG` is **not line-oriented**. The payload is raw and may contain CR,
 LF, `"`, or NUL. Read it by **byte count**, never by line. Payload size is
-unbounded by the firmware — it streams straight through — so cap it
-client-side and discard the excess.
+unbounded by the firmware — it streams straight through in
+`MQTT_MAX_TOPIC_LEN` (128 B) chunks — so cap it client-side, but keep
+counting through the excess to stay in sync. The topic is truncated to 128
+bytes by the firmware, so `<topic_len>` never exceeds that.
+
+The whole block — header, topic, CRLF, payload, CRLF, `#XMQTTEVT: 2,0` — is
+emitted while `mqtt_poll_work_handler()` holds `sm_at_host_lock()`. Nothing
+interleaves: no URC, no command response. A command in flight simply gets its
+response after the block, so a large inbound message (8 KB ≈ 711 ms of UART
+time) can blow a short command deadline. Size deadlines by bytes moved on the
+wire, not by command.
 
 Framing (correct since the fork rebased past upstream `7c1cb92`; older fork
 builds get it backwards — see below):
@@ -529,12 +564,26 @@ the modem.
 | MQTT topic | ≤ 128 bytes |
 | MQTT client ID | ≤ 64 bytes |
 | MQTT control buffer | 512 bytes (excludes payload) |
-| Publish payload | keep well under `CONFIG_SM_DATAMODE_BUF_SIZE` = 8192 |
-| Inbound payload | unbounded by firmware — cap it yourself |
+| Publish payload (counted) | ≤ `CONFIG_SM_DATAMODE_BUF_SIZE` = 8192 exactly; larger is `ERROR`; 0 is terminator mode |
+| Publish payload, max gap between bytes | ≈ 187 ms, else the idle timer splits it into two messages |
+| Inbound payload | unbounded by firmware — cap it yourself, but count through the rest |
+| Inbound topic | truncated to 128 by firmware |
 | SM UART RX slab | 3 × 2048 = 6144 B ≈ 533 ms of drain slack |
+| SM UART TX buffer | 256 B; beyond that `data_send()` blocks the work queue at UART rate |
 | SM URC ring | 8192 B; **resets itself on overflow**, losing queued URCs |
 | AT command max | 4096 bytes (a PEM fits) |
+| Longest non-payload command we send | `#XMQTTCON=1` ≈ 223 B with max user/pass/host |
 
-The publish limit is the one that matters: exceed the data-mode buffer and SM
-transmits mid-stream over LTE, which can stall UART drain for seconds and
-silently drop host bytes when hardware flow control is off.
+Host side, arduino-pico 6.0.0 `Serial1` on the RP2040 (no flow-control wiring):
+
+| | |
+|---|---|
+| RX | 32 B hardware FIFO + 32 B IRQ-fed software queue by default ≈ **5.5 ms** of slack, then silent loss (`Serial1.overflow()` is the only tell). Call `Serial1.setFIFOSize(n)` before `begin()`; 2048 ≈ 178 ms |
+| TX | no software buffer; `write()` goes straight into the 32 B hardware FIFO, `availableForWrite()` is 0/1. A non-blocking writer moves ≤ 32 B per `poll()`, so an 8 KB publish takes ≥ 256 polls — and must not pause > 187 ms |
+
+Two consequences follow. Terminator-mode publishes that exceed the data-mode
+buffer are transmitted mid-stream over LTE, which can stall UART drain for
+seconds and silently drop host bytes. And a publish in flight while an inbound
+message is streaming has the SM work queue blocked on outbound UART, so host
+bytes pile into the 6 KB RX slab; keep outbound payloads comfortably inside
+that if both directions can be busy at once.

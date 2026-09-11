@@ -7,13 +7,11 @@
 
 class FakeSerial: public arduino::HardwareSerial {
  public:
-  FakeSerial(unsigned long baud, etl::string_view rbuf, etl::istring* wbuf)
-    : baud(baud), read_buf(rbuf), write_buf(wbuf) {}
   virtual ~FakeSerial() = default;
 
   unsigned long baud = 0;
   etl::string_view read_buf;
-  etl::istring *write_buf = nullptr;
+  etl::string<8192> write_buf;
 
   void begin(unsigned long baud) override { this->baud = baud; }
   void begin(unsigned long baud, uint16_t conf) override { this->baud = baud; }
@@ -29,12 +27,12 @@ class FakeSerial: public arduino::HardwareSerial {
   }
 
   int availableForWrite() override {
-    return write_buf ? write_buf->available() : 0;
+    return write_buf.available();
   }
 
   size_t write(uint8_t c) override {
     if (!availableForWrite()) return 0;
-    write_buf->push_back(c);
+    write_buf.push_back(c);
     return 1;
   }
 

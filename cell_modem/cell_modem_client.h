@@ -15,11 +15,15 @@ struct MqttServerConfig {
   int port;
 };
 
+struct MqttMessage {
+  etl::string_view topic, payload;
+};
+
 struct CellModemStatus {
   // hardware identification
   etl::string<32> hardware;
-  etl::string<32> versions[4];  // baseband, nordic SDK, serial app, customer
-  etl::string<32> imeisv;
+  etl::array<etl::string<32>, 4> versions;  // baseband, SDK, app, customer
+  etl::string<16> imeisv;
 
   // radio / registration status
   bool running = false, registered = false, roaming = false, failed = false;
@@ -31,14 +35,21 @@ struct CellModemStatus {
   uint8_t reject_cause = 0;
 
   // packet network status
-  bool ip_attached = false, mqtt_connected = false, mqtt_subscribed = false;
+  bool ip_attached = false;
   uint32_t ip_addr = 0;
+
+  // MQTT status
+  bool mqtt_ready = false, mqtt_publish_busy = false;
 };
 
 class CellModemClient {
  public:
   virtual ~CellModemClient() = default;
   virtual CellModemStatus const& poll() = 0;
+
+  // Requires poll().mqtt_ready && !poll().mqtt_publish_busy; strings must
+  // remain valid until poll().mqtt_publish_busy is false again
+  virtual void publish(MqttMessage const& msg) = 0;
 };
 
 etl::unique_ptr<CellModemClient> make_cell_modem_client(
