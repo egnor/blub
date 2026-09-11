@@ -84,7 +84,7 @@ class CellModemClientDef : public CellModemClient {
 
     if (state != State::IDLE && poll_time >= state_deadline) {
       OK_ERROR("Command timeout (state=%d)", state);
-      out_bufs.push("\r\n+++\"\r\n");  // unstick modem parser state
+      out_bufs.push("\r+++\"\r");  // unstick modem parser state
       state = State::IDLE;
     }
 
@@ -101,83 +101,83 @@ class CellModemClientDef : public CellModemClient {
     if (state == State::IDLE && out_bufs.empty()) {
       // hardware ID (once at startup)
       if (status.hardware.empty()) {
-        out_bufs.push("AT+CGMM\r\n");  // modem model
+        out_bufs.push("AT+CGMM\r");  // modem model
         state = State::AT_CGMM_WAIT;
       } else if (status.versions[0].empty()) {
-        out_bufs.push("AT+CGMR\r\n");  // modem revision
+        out_bufs.push("AT+CGMR\r");  // modem revision
         state = State::AT_CGMR_WAIT;
       } else if (status.versions[1].empty()) {
-        out_bufs.push("AT#XSMVER\r\n");  // extended serial modem versions
+        out_bufs.push("AT#XSMVER\r");  // extended serial modem versions
         state = State::OK_WAIT;
       } else if (status.imeisv.empty()) {
-        out_bufs.push("AT+CGSN=2\r\n");  // get IMEI
+        out_bufs.push("AT+CGSN=2\r");  // get IMEI
         state = State::OK_WAIT;
 
         // cert state (once at startup)
       } else if (cert_state == CertState::UNKNOWN) {
-        out_bufs.push("AT%CMNG=1,0,0\r\n");  // 1=check slot=0 type=0=root
+        out_bufs.push("AT%CMNG=1,0,0\r");  // 1=check slot=0 type=0=root
         state = State::OK_WAIT;
         cert_state = CertState::INVALID;
       } else if (cert_state == CertState::INVALID) {
-        out_bufs.push("AT+CFUN=4\r\n");  // 4=radio-off before cert update
+        out_bufs.push("AT+CFUN=4\r");  // 4=radio-off before cert update
         state = State::OK_WAIT;
         cert_state = CertState::OK_TO_ERASE;  // erase (radio should be off)
       } else if (cert_state == CertState::OK_TO_ERASE) {
-        out_bufs.push("AT%CMNG=3,0,0\r\n");  // 3=del slot=0 type=0=root
+        out_bufs.push("AT%CMNG=3,0,0\r");  // 3=del slot=0 type=0=root
         state = State::OK_WAIT;
         cert_state = CertState::OK_TO_WRITE;  // write (radio off, cert erased)
       } else if (cert_state == CertState::OK_TO_WRITE) {
         out_bufs.push("AT%CMNG=0,0,0,\"");
         out_bufs.push(mqtt_server.cert);
-        out_bufs.push("\"\r\n");
+        out_bufs.push("\"\r");
         state = State::OK_WAIT;
         cert_state = CertState::UNKNOWN;  // re-verify after write
 
         // periodic poll steps
       } else if (periodic_step == 0) {
-        out_bufs.push("AT+CMEE=1\r\n");  // enable extended errors
+        out_bufs.push("AT+CMEE=1\r");  // enable extended errors
         state = State::OK_WAIT;
         ++periodic_step;
       } else if (periodic_step == 1) {
-        out_bufs.push("AT%XPDNCFG=1\r\n");  // always-on packet network
+        out_bufs.push("AT%XPDNCFG=1\r");  // always-on packet network
         state = State::OK_WAIT;
         ++periodic_step;
       } else if (periodic_step == 2) {
-        out_bufs.push("AT+CFUN=1\r\n");  // enable radio
+        out_bufs.push("AT+CFUN=1\r");  // enable radio
         state = State::OK_WAIT;
         ++periodic_step;
       } else if (periodic_step == 3) {
-        out_bufs.push("AT+CEREG=1\r\n");  // radio events (after CFUN)
+        out_bufs.push("AT+CEREG=1\r");  // radio events (after CFUN)
         state = State::OK_WAIT;
         ++periodic_step;
       } else if (periodic_step == 4) {
-        out_bufs.push("AT+CGEREP=1\r\n");  // data events (after CFUN)
+        out_bufs.push("AT+CGEREP=1\r");  // data events (after CFUN)
         state = State::OK_WAIT;
         periodic_step = -1;  // End of periodic poll
 
       } else if (do_poll_reg) {
-        out_bufs.push("AT%XMONITOR\r\n");  // network and radio status
+        out_bufs.push("AT%XMONITOR\r");  // network and radio status
         state = State::OK_WAIT;
         do_poll_reg = false;
       } else if (do_poll_ip) {
-        out_bufs.push("AT+CGPADDR\r\n");  // get packet (IP) addresses
+        out_bufs.push("AT+CGPADDR\r");  // get packet (IP) addresses
         state = State::AT_CGPADDR_WAIT;
         do_poll_ip = false;
       } else if (do_poll_mqtt) {
-        out_bufs.push("AT#XMQTTCON?\r\n");  // get MQTT connection status
+        out_bufs.push("AT#XMQTTCON?\r");  // get MQTT connection status
         state = State::OK_WAIT;
         do_poll_mqtt = false;
 
         // MQTT connection management
       } else if (mqtt_state == MqttState::OK_TO_DISCONNECT) {
-        out_bufs.push("AT#XMQTTCON=0\r\n");
+        out_bufs.push("AT#XMQTTCON=0\r");
         state = State::OK_WAIT;
         mqtt_state = MqttState::OK_TO_CONFIG;
       } else if (mqtt_state == MqttState::OK_TO_CONFIG &&
                  !status.imeisv.empty()) {
         out_bufs.push("AT#XMQTTCFG=\"");
         out_bufs.push(status.imeisv);
-        out_bufs.push("\",60,1\r\n");
+        out_bufs.push("\",60,1\r");
         state = State::OK_WAIT;
         mqtt_state = MqttState::OK_TO_CONNECT;
       } else if (mqtt_state == MqttState::OK_TO_CONNECT &&
@@ -192,7 +192,7 @@ class CellModemClientDef : public CellModemClient {
         out_bufs.push("\",");
         etl::to_string(mqtt_server.port, out_scratch);
         out_bufs.push(out_scratch);
-        out_bufs.push(mqtt_server.cert.empty() ? "\r\n" : ",0\r\n");
+        out_bufs.push(mqtt_server.cert.empty() ? "\r" : ",0\r");
         state = State::AT_XMQTTCON_WAIT;
         mqtt_state = MqttState::CONNECT_WAIT;
         mqtt_backoff = poll_time + 30_s;  // limit reconnection attempts
@@ -201,7 +201,7 @@ class CellModemClientDef : public CellModemClient {
         auto const sub = mqtt_subs[mqtt_subscribed];
         out_bufs.push("AT#XMQTTSUB=\"");
         out_bufs.push(sub);
-        out_bufs.push("\",0\r\n");
+        out_bufs.push("\",0\r");
         state = State::OK_WAIT;
         mqtt_state = MqttState::SUBSCRIBE_WAIT;
       } else if (mqtt_state == MqttState::PUBLISH_PENDING) {
@@ -210,7 +210,7 @@ class CellModemClientDef : public CellModemClient {
         out_bufs.push("\",\"\",0,0,");
         etl::to_string(mqtt_pub.payload.size(), out_scratch);
         out_bufs.push(out_scratch);
-        out_bufs.push("\r\n");
+        out_bufs.push("\r");
         state = State::AT_XMQTTPUB_WAIT;
         mqtt_state = MqttState::CONNECTED;
       }

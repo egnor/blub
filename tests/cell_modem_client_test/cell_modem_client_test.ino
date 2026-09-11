@@ -109,81 +109,81 @@ static void test_modem_client_setup() {
 
   // Verify the specific initialization and poll cycle
   client->poll();
-  VERIFY_A_OP_B_STR(serial.write_buf, ==, "AT+CGMM\r\n");
+  VERIFY_A_OP_B_STR(serial.write_buf, ==, "AT+CGMM\r");
   fake_modem_reply(&serial);
 
   client->poll();
-  VERIFY_A_OP_B_STR(serial.write_buf, ==, "AT+CGMR\r\n");
+  VERIFY_A_OP_B_STR(serial.write_buf, ==, "AT+CGMR\r");
   fake_modem_reply(&serial);
 
   client->poll();
-  VERIFY_A_OP_B_STR(serial.write_buf, ==, "AT#XSMVER\r\n");
+  VERIFY_A_OP_B_STR(serial.write_buf, ==, "AT#XSMVER\r");
   fake_modem_reply(&serial);
 
   client->poll();
-  VERIFY_A_OP_B_STR(serial.write_buf, ==, "AT+CGSN=2\r\n");
+  VERIFY_A_OP_B_STR(serial.write_buf, ==, "AT+CGSN=2\r");
   fake_modem_reply(&serial);
 
   client->poll();
-  VERIFY_A_OP_B_STR(serial.write_buf, ==, "AT%CMNG=1,0,0\r\n");  // check certs
+  VERIFY_A_OP_B_STR(serial.write_buf, ==, "AT%CMNG=1,0,0\r");  // check certs
   fake_modem_reply(&serial);
 
   client->poll();
-  VERIFY_A_OP_B_STR(serial.write_buf, ==, "AT+CMEE=1\r\n");  // ext. errors on
+  VERIFY_A_OP_B_STR(serial.write_buf, ==, "AT+CMEE=1\r");  // ext. errors on
   fake_modem_reply(&serial);
 
   client->poll();
-  VERIFY_A_OP_B_STR(serial.write_buf, ==, "AT%XPDNCFG=1\r\n");  // always-on IP
+  VERIFY_A_OP_B_STR(serial.write_buf, ==, "AT%XPDNCFG=1\r");  // always-on IP
   fake_modem_reply(&serial);
 
   client->poll();
-  VERIFY_A_OP_B_STR(serial.write_buf, ==, "AT+CFUN=1\r\n");  // radio on
+  VERIFY_A_OP_B_STR(serial.write_buf, ==, "AT+CFUN=1\r");  // radio on
   fake_modem_reply(&serial);
 
   client->poll();
-  VERIFY_A_OP_B_STR(serial.write_buf, ==, "AT+CEREG=1\r\n");  // reg notify on
+  VERIFY_A_OP_B_STR(serial.write_buf, ==, "AT+CEREG=1\r");  // reg notify on
   fake_modem_reply(&serial);
 
   client->poll();
-  VERIFY_A_OP_B_STR(serial.write_buf, ==, "AT+CGEREP=1\r\n");  // data notify on
+  VERIFY_A_OP_B_STR(serial.write_buf, ==, "AT+CGEREP=1\r");  // data notify on
   fake_modem_reply(&serial);
 
   client->poll();
-  VERIFY_A_OP_B_STR(serial.write_buf, ==, "AT%XMONITOR\r\n");  // check radio
+  VERIFY_A_OP_B_STR(serial.write_buf, ==, "AT%XMONITOR\r");  // check radio
   fake_modem_reply(&serial);
 
   client->poll();
-  VERIFY_A_OP_B_STR(serial.write_buf, ==, "AT+CGPADDR\r\n");  // check IP
+  VERIFY_A_OP_B_STR(serial.write_buf, ==, "AT+CGPADDR\r");  // check IP
   fake_modem_reply(&serial);
 
   client->poll();
-  VERIFY_A_OP_B_STR(serial.write_buf, ==, "AT#XMQTTCON?\r\n");  // check MQTT
+  VERIFY_A_OP_B_STR(serial.write_buf, ==, "AT#XMQTTCON?\r");  // check MQTT
   fake_modem_reply(&serial);
 
   client->poll();
-  VERIFY_A_OP_B_STR(serial.write_buf, ==, "AT#XMQTTCON=0\r\n");  // disconnect
+  VERIFY_A_OP_B_STR(serial.write_buf, ==, "AT#XMQTTCON=0\r");  // disconnect
   fake_modem_reply(&serial);
 
   client->poll();
   VERIFY_A_OP_B_STR(
     serial.write_buf, ==,
-    "AT#XMQTTCFG=\"1122222233333344\",60,1\r\n"  // configure MQTT
+    "AT#XMQTTCFG=\"1122222233333344\",60,1\r"  // configure MQTT
   );
   fake_modem_reply(&serial);
 
   client->poll();
   VERIFY_A_OP_B_STR(
     serial.write_buf, ==,
-    "AT#XMQTTCON=1,\"fake-user\",\"fake-pass\",\"fake-server\",8883,0\r\n"
+    "AT#XMQTTCON=1,\"fake-user\",\"fake-pass\",\"fake-server\",8883,0\r"
   );
   fake_modem_reply(&serial);
 
   client->poll();
-  VERIFY_A_OP_B_STR(serial.write_buf, ==, "AT#XMQTTSUB=\"topic1\",0\r\n");
+  VERIFY_A_OP_B_STR(serial.write_buf, ==, "AT#XMQTTSUB=\"topic1\",0\r");
   fake_modem_reply(&serial);
 
   client->poll();
-  VERIFY_A_OP_B_STR(serial.write_buf, ==, "AT#XMQTTSUB=\"topic2\",0\r\n");
+  VERIFY_A_OP_B_STR(serial.write_buf, ==, "AT#XMQTTSUB=\"topic2\",0\r");
   fake_modem_reply(&serial);
 
   client->poll();
@@ -229,7 +229,7 @@ static void test_mqtt_publish() {
   auto const& st2 = client->poll();
   VERIFY_A_OP_B_INT(st2.mqtt_publish_busy, >, 0);
   VERIFY_A_OP_B_STR(
-    serial.write_buf, ==, "AT#XMQTTPUB=\"test-topic\",\"\",0,0,12\r\n"
+    serial.write_buf, ==, "AT#XMQTTPUB=\"test-topic\",\"\",0,0,12\r"
   );
   fake_modem_reply(&serial);
 

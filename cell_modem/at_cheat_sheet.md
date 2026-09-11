@@ -76,7 +76,33 @@ store** — without this, TLS connects fail. Modem must be offline.
 Types: `0` root CA · `1` client cert · `2` client private key · `3` PSK ·
 `4` PSK identity. For a certbot/Let's Encrypt broker you need only type `0`
 holding ISRG Root X1, and no client credentials unless the broker requires
-mutual TLS. PEM must use CRLF line endings.
+mutual TLS.
+
+PEM line endings: LF-only is fine. Nordic's own `modem_key_mgmt_write()` passes
+the PEM through `nrf_modem_at_printf()` verbatim, and every cert in the NCS
+tree is LF-only; a DevZone thread reports both the original file and a
+hand-stripped one-line version importing successfully. The modem stores the
+bytes exactly as written (`<CR>`, `<LF>` and all), and the SHA-256 that
+`%CMNG=1` reports is over those stored bytes, so **whichever line ending you
+pick, `cert_sha256` in the config must be computed over the same bytes** —
+`test_blub_cert_sha256` checks this. Over the SM's UART, termination characters
+are ignored inside double quotes, so both CR and LF survive the trip either
+way. We currently use CRLF; that is a choice, not a requirement.
+
+## Command termination
+
+This build has `CONFIG_SM_CR_TERMINATION=y` (from the Circuit Dojo board
+config, "CR only for PuTTY"). In `cmd_rx_handler()` a bare CR outside double
+quotes dispatches the command at once; LF is not a terminator. **Send `\r`
+only.** CRLF happens to work for ordinary commands because the parser discards
+everything until it sees `AT`, so the stray LF is dropped. It does *not* work
+for `#XMQTTPUB`: `enter_datamode()` runs synchronously inside the handler, so
+the LF after the CR becomes the first payload byte, the message gains a leading
+newline, and the last real byte is left over in command mode. Termination
+characters are ignored inside quotes, which is why a PEM with CRLF line endings
+passes through `AT%CMNG=0` intact; that requirement comes from the modem's PEM
+parser, not from the AT line syntax. Responses and URCs always arrive CRLF
+terminated regardless.
 
 ## MQTT
 
@@ -293,6 +319,8 @@ Counted mode, verified in `sm_at_host.c` / `sm_at_mqtt.c`:
   So the exact bound is 8192, not "well under" — that advice is for
   terminator mode, where a full ring flushes mid-stream with `MORE_DATA`
   set, which the MQTT handler rejects with `-EOVERFLOW`.
+* Terminate the command with a bare CR. Any byte after the CR — an LF in
+  particular — is already payload. See *Command termination*.
 * `<len>` = 0 is *not* an empty publish: it selects terminator mode. An empty
   MQTT payload cannot be published through the counted path.
 * **⚠ The data-mode inactivity timer still runs in counted mode.** Every
