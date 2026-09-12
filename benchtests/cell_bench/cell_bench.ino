@@ -115,8 +115,8 @@ void setup() {
     delay(1000);
   }
 
-  Serial1.setTX(12);
-  Serial1.setRX(13);
+  Serial1.setTX(0);
+  Serial1.setRX(1);
   Serial1.setFIFOSize(2048);
   Serial1.begin(115200);
   static const etl::string_view subs[] = {"cell_bench/sub"};
