@@ -6,7 +6,7 @@
 #include <ok_little_layout.h>
 #include <ok_micro_dock.h>
 
-#include <blub_clock.h>
+#include <blub_clock_util.h>
 #include <blub_mqtt_config.h>
 #include <cell_modem_client.h>
 
@@ -38,7 +38,7 @@ void loop() {
   if (!status.running) {
     ok_dock_layout->line_printf(1, "\f9Radio Off");
   } else if (status.failed) {
-    ok_dock_layout->line_printf(1, "\f9Failed (%d)", status.reject_cause);
+    ok_dock_layout->line_printf(1, "\f9Failed");
   } else if (!status.registered) {
     ok_dock_layout->line_printf(1, "\f9Searching...");
   } else if (!status.ip_attached) {
@@ -67,7 +67,7 @@ void loop() {
     if (!status.running) {
       OK_NOTE("🚫 radio off");
     } else if (status.failed) {
-      OK_NOTE("❌️ failed/rejected (%d)", status.reject_cause);
+      OK_NOTE("❌️ failed");
     } else if (!status.registered) {
       OK_NOTE("🔎 searching...");
     } else {

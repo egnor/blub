@@ -10,7 +10,7 @@
 #include <memory>
 #include <ok_logging.h>
 
-#include <blub_clock.h>
+#include <blub_clock_util.h>
 
 using namespace etl::chrono;
 using namespace etl::chrono_literals;
@@ -250,7 +250,7 @@ class CellModemClientDef : public CellModemClient {
     return status;
   }
 
-  void publish(MqttMessage const& pub) override {
+  void publish(MqttMessage pub) override {
     if (!mqtt_pub.topic.empty()) {
       OK_ERROR("MQTT publish while busy: %s", abbr(pub.topic).c_str());
     } else if (mqtt_state != MqttState::CONNECTED ||
@@ -267,6 +267,10 @@ class CellModemClientDef : public CellModemClient {
       mqtt_state = MqttState::PUBLISH_PENDING;
       status.mqtt_publish_busy = true;
     }
+  }
+
+  MqttMessage incoming() const override {
+    return {};
   }
 
  private:
@@ -465,7 +469,6 @@ class CellModemClientDef : public CellModemClient {
         status.roaming = (reg == 5);
         if (reg == 3 || reg == 90) status.failed = true;
         if (status.running) status.failed = false;
-        if (status.registered) status.reject_cause = 0;
         if (!status.registered) status.ip_attached = false;
 
         etl::string_view op_full, op_short, op_mcc_mnc;
