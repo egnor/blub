@@ -4,6 +4,7 @@ arduino = "1.5.1"
 node = "latest"
 python = "3.12"
 uv = "0.12"
+"github:circuitdojo/modem_updater" = { bin = "modem_updater", version = "0.1.5" }
 "github:probe-rs/probe-rs" = { matching = "probe-rs-tools", version = "0.32" }
 "pipx:grip" = "4.6"
 
