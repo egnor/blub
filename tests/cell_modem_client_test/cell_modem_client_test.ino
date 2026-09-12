@@ -76,10 +76,8 @@ static bool run_client_setup(
     } else if (status.mqtt_ready) {
       OK_NOTE("CellModemClient setup complete (loop=%d)", loop);
       return true;
-    } else {
-      OK_ERROR("#TEST-FAIL# CellModemClient setup idle (loop=%d)", loop);
-      return false;
     }
+    delay(10);
   }
   OK_ERROR("#TEST-FAIL# CellModemClient setup overrun");
   return false;
@@ -109,6 +107,13 @@ static void test_modem_client_setup() {
 
   // Verify the specific initialization and poll cycle
   client->poll();
+  VERIFY_A_OP_B_STR(serial.write_buf, ==, "AT\r");
+  fake_modem_reply(&serial);
+
+  for (int i = 0; i < 100 && serial.write_buf.empty(); ++i) {
+    client->poll();
+    delay(10);
+  }
   VERIFY_A_OP_B_STR(serial.write_buf, ==, "AT+CGMM\r");
   fake_modem_reply(&serial);
 
