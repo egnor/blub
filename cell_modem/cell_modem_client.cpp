@@ -43,22 +43,23 @@ class CellModemClientDef : public CellModemClient {
   }
 
   CellModemStatus const& poll() override {
-    auto const last_poll = poll_time;
-    poll_time = steady_clock::now();
+    auto const poll_time = steady_clock::now();
     if (auto const elapsed = poll_time - last_poll; elapsed > 50_ms) {
       OK_ERROR("Slow poll (%.3fs since last)", raw_count<secd>(elapsed));
     }
 
-    for (int avail = 0; avail || ((avail = serial->available()) > 0); --avail) {
+    for (int av = 0; av || ((av = serial->available()) > 0); --av) {
+      last_serial_input = poll_time;
+      int const ch = serial->read();
+      if (ch < 0) {
+        OK_ERROR("Serial read error: available=%d ch=%d", av, ch);
+        break;
+      }
       if (in_buf.full()) {
         OK_ERROR("Dropping long input: %s", abbr(in_buf).c_str());
         in_buf.clear();
       }
-      int const ch = serial->read();
-      if (ch < 0) {
-        OK_ERROR("Serial read error: available=%d ch=%d", avail, ch);
-        break;
-      } else if (in_expect > 0) {
+      if (in_expect > 0) {
         in_buf.push_back(ch);
         if (in_buf.size() >= in_expect) {
           OK_DETAIL("📦 %s", abbr(in_buf).c_str());
@@ -66,23 +67,22 @@ class CellModemClientDef : public CellModemClient {
           in_buf.clear();
           in_expect = 0;
         }
-      } else if (ch == '\r' || ch == '\n') {
+      } else if (ch == '\n' || ch == '\r') {
         if (!in_buf.empty()) {
           OK_DETAIL("⬅️ %s", abbr(in_buf).c_str());
           handle_input_line();
           in_buf.clear();
         }
-      } else if (ch < 32 || ch >= 256) {
-        OK_ERROR("Bad input char (state=%d): 0x02x", state, ch);
+      } else if (ch < 32 || ch > 255) {
+        OK_ERROR("Bad input char (state=%d): 0x%02x", state, ch);
         in_buf.clear();
       } else {
         in_buf.push_back(ch);
       }
-      read_time = poll_time;
     }
 
     if (state == State::PROBE_DRAIN) {
-      if (poll_time >= read_time + 100_ms) {
+      if (poll_time >= last_serial_input + 100_ms) {
         OK_DETAIL("✅️ Startup probe complete");
         state = State::IDLE;
       }
@@ -90,11 +90,11 @@ class CellModemClientDef : public CellModemClient {
       // Measure the command timeout after output buffers are emptied
       steady_clock::time_point state_deadline;
       if (state == State::AT_XMQTTCON_WAIT) {
-        state_deadline = write_time + 60_s;
+        state_deadline = last_serial_output + 60_s;
       } else if (state == State::PROBE_DRAIN) {
-        state_deadline = write_time + 500_ms;
+        state_deadline = last_serial_output + 500_ms;
       } else {
-        state_deadline = write_time + 5_s;
+        state_deadline = last_serial_output + 5_s;
       }
 
       if (poll_time >= state_deadline) {
@@ -182,6 +182,7 @@ class CellModemClientDef : public CellModemClient {
         state = State::OK_WAIT;
         periodic_step = -1;  // End of periodic poll
 
+        // triggered poll steps
       } else if (do_poll_reg) {
         out_bufs.push("AT%XMONITOR\r");  // network and radio status
         state = State::OK_WAIT;
@@ -194,6 +195,13 @@ class CellModemClientDef : public CellModemClient {
         out_bufs.push("AT#XMQTTCON?\r");  // get MQTT connection status
         state = State::OK_WAIT;
         do_poll_mqtt = false;
+
+        // restart the radio if it doesn't seem to be running
+      } else if (poll_time - last_radio_on > 60_s) {
+        out_bufs.push("AT+CFUN=4\r");
+        state = State::OK_WAIT;
+        last_radio_on = poll_time;  // don't re-cycle immediately
+        next_periodic = {};  // poll right away to turn radio back on
 
         // MQTT connection management
       } else if (mqtt_state == MqttState::OK_TO_DISCONNECT) {
@@ -250,15 +258,17 @@ class CellModemClientDef : public CellModemClient {
       if (!out_bufs.empty()) OK_DETAIL("▶️ %s", abbr(out_bufs).c_str());
     }
 
-    if (!out_bufs.empty()) write_time = poll_time;
+    if (!out_bufs.empty()) last_serial_output = poll_time;
 
-    while (!out_bufs.empty() && serial->availableForWrite() > 0) {
+    while (!out_bufs.empty()) {
       auto* buf = &out_bufs.front();
-      while (!buf->empty() && serial->availableForWrite() > 0) {
+      for (int av = 0; av || ((av = serial->availableForWrite()) > 0); --av) {
+        if (buf->empty()) break;
         serial->write(buf->front());
         buf->remove_prefix(1);
       }
-      if (buf->empty()) out_bufs.pop();
+      if (!buf->empty()) break;
+      out_bufs.pop();
     }
 
     if (mqtt_state != MqttState::PUBLISH_PENDING &&
@@ -272,6 +282,7 @@ class CellModemClientDef : public CellModemClient {
       mqtt_subscribed >= mqtt_subs.size()
     );
     status.mqtt_publish_busy = !mqtt_pub.topic.empty();
+    last_poll = poll_time;
     return status;
   }
 
@@ -337,9 +348,10 @@ class CellModemClientDef : public CellModemClient {
   CellModemStatus status;
 
   State state = State::IDLE;
-  steady_clock::time_point poll_time = steady_clock::time_point::max();
-  steady_clock::time_point read_time = steady_clock::time_point::max();
-  steady_clock::time_point write_time = steady_clock::time_point::max();
+  steady_clock::time_point last_poll = steady_clock::time_point::max();
+  steady_clock::time_point last_serial_input = {};
+  steady_clock::time_point last_serial_output = {};
+  steady_clock::time_point last_radio_on = steady_clock::time_point::max();
   steady_clock::time_point next_periodic = {};
   int periodic_step = -1;
   bool do_probe = true;
@@ -370,7 +382,8 @@ class CellModemClientDef : public CellModemClient {
     // Generic fault/reset messages
     //
 
-    if (eat(&rest, "Ready")) {
+    // "Ready" is often prefixed with \xFF because... UART init or something?
+    if (eat(&rest, "Ready") || eat(&rest, "\xffReady")) {
       if (!status.running) {
         OK_NOTE("Modem init: %s", abbr(in_buf).c_str());
       } else {
@@ -496,6 +509,7 @@ class CellModemClientDef : public CellModemClient {
     if (eat(&rest, "%XMONITOR:")) {
       int reg;
       if (eat_int(&rest, &reg)) {
+        if (reg != 0) last_radio_on = last_poll;
         status.running = (reg == 1 || reg == 2 || reg == 5);
         status.registered = (reg == 1 || reg == 5);
         status.roaming = (reg == 5);
