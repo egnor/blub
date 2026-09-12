@@ -1,0 +1,69 @@
+diff --git a/lib/nrf_modem_lib/nrf9x_sockets.c b/lib/nrf_modem_lib/nrf9x_sockets.c
+index b8f2b86eee..1dbb61729a 100644
+--- a/lib/nrf_modem_lib/nrf9x_sockets.c
++++ b/lib/nrf_modem_lib/nrf9x_sockets.c
+@@ -29,6 +29,7 @@
+ #include <zephyr/net/conn_mgr_connectivity_impl.h>
+ #include <zephyr/net/net_if.h>
+ #include <zephyr/sys/util_macro.h>
++#include <zephyr/logging/log.h>
+ 
+ #if defined(CONFIG_POSIX_API)
+ #include <zephyr/posix/poll.h>
+@@ -36,6 +37,8 @@
+ #include <zephyr/posix/sys/socket.h>
+ #endif
+ 
++LOG_MODULE_DECLARE(nrf_modem, CONFIG_NRF_MODEM_LIB_LOG_LEVEL);
++
+ #if defined(CONFIG_NET_SOCKETS_OFFLOAD)
+ 
+ /* Macro used to define a private Connection Manager connectivity context type.
+@@ -65,12 +68,26 @@ static bool offload_disabled;
+ /* TLS offloading disabled only. */
+ static bool tls_offload_disabled;
+ 
++static void release_ctx(struct nrf_sock_ctx *ctx);
++
+ static struct nrf_sock_ctx *allocate_ctx(int nrf_fd, int zvfs_fd)
+ {
+ 	struct nrf_sock_ctx *ctx = NULL;
+ 
+ 	k_mutex_lock(&ctx_lock, K_FOREVER);
+ 
++	for (int i = 0; i < ARRAY_SIZE(offload_ctx); i++) {
++		if (offload_ctx[i].nrf_fd == nrf_fd) {
++			/* The nRF Modem Library just handed out this descriptor, so any
++			 * context still holding it is stale. Left in place, find_ctx()
++			 * would return it instead of the new socket's context and
++			 * swallow that socket's poll and send callbacks.
++			 */
++			LOG_WRN("Reclaiming stale context for nRF socket %d", nrf_fd);
++			release_ctx(&offload_ctx[i]);
++		}
++	}
++
+ 	for (int i = 0; i < ARRAY_SIZE(offload_ctx); i++) {
+ 		if (offload_ctx[i].nrf_fd == -1) {
+ 			ctx = &offload_ctx[i];
+@@ -1104,9 +1121,18 @@ static int nrf9x_socket_offload_close(void *obj)
+ 	int retval;
+ 
+ 	retval = nrf_close(ctx->nrf_fd);
+-	if (retval == 0) {
+-		release_ctx(ctx);
++	if (retval != 0) {
++		/* zvfs_close() frees the descriptor whatever we return, so a retained
++		 * context can never be reached again; it would only shadow a future
++		 * socket that reuses the same nRF descriptor.
++		 */
++		int err = errno;
++
++		LOG_ERR("nrf_close(%d) failed, errno %d; releasing context anyway",
++			ctx->nrf_fd, err);
++		errno = err;
+ 	}
++	release_ctx(ctx);
+ 
+ 	return retval;
+ }

@@ -19,11 +19,12 @@ APP_REPO_URL = "https://github.com/circuitdojo/ncs-serial-modem"
 APP_REPO_REV = "268e8396c51bfeae77e1fffafbce022487d2fa43"
 UPSTREAM_REPO_URL = "https://github.com/nrfconnect/ncs-serial-modem"
 
-# changes to apply from git or patch locally, currently empty
-UPSTREAM_CHERRY_PICKS = []  # refs to cherry-pick from UPSTREAM_REPO_URL
-LOCAL_PATCHES = []
+# changes to apply from git or patch locally
+APP_CHERRY_PICKS = []  # refs to cherry-pick from UPSTREAM_REPO_URL
+APP_LOCAL_PATCHES = []  # patch files to apply from this script's dir
+SDK_LOCAL_PATCHES = ["nrf9151_ncs_socket_ctx.patch"]
 
-NCS_VERSION = "v3.4.0"  # toolchain bundle; must suit the app
+SDK_VERSION = "v3.4.0"  # toolchain bundle; must suit the app
 SDK_MANAGER_VERSION = "1.16.1"  # nrfutil plugin (nrfutil itself is unpinnable)
 
 
@@ -37,8 +38,9 @@ def main():
     if not (nrfutil_home_env := os.environ.get("NRFUTIL_HOME")):
         ok_logging_setup.exit("$NRFUTIL_HOME not set (check mise?)")
 
-    ncs_dir = Path(nrfutil_home_env).resolve()
-    workspace_dir = ncs_dir / "workspace"
+    script_dir = Path(__file__).parent.resolve()
+    install_dir = Path(nrfutil_home_env).resolve()
+    workspace_dir = install_dir / "workspace"
     app_dir = workspace_dir / "circuitdojo-ncs-serial-modem"
 
     logging.info("\n▶️ nRF Connect SDK")
@@ -47,8 +49,8 @@ def main():
     if installed.get("sdk-manager") != SDK_MANAGER_VERSION:
         pinned_sdk_manager = f"sdk-manager={SDK_MANAGER_VERSION}"
         run("nrfutil", "install", "--force", pinned_sdk_manager)
-    run("nrfutil", "sdk-manager", "config", "install-dir", "set", ncs_dir)
-    run("nrfutil", "sdk-manager", "install", NCS_VERSION)
+    run("nrfutil", "sdk-manager", "config", "install-dir", "set", install_dir)
+    run("nrfutil", "sdk-manager", "install", SDK_VERSION)
 
     logging.info("\n\n▶️ Nordic Serial Modem app repo (circuitdojo fork)")
     if not (app_dir / ".git").is_dir():
@@ -60,16 +62,17 @@ def main():
     run("git", "-C", app_dir, "checkout", "--quiet", "--detach", APP_REPO_REV)
     id = parser.prog or Path(__file__).name
     id_args = ("-c", f"user.name={id}", "-c", f"user.email={id}@invalid")
-    for ref in UPSTREAM_CHERRY_PICKS:
+    for ref in APP_CHERRY_PICKS:
         run("git", "-C", app_dir, "fetch", UPSTREAM_REPO_URL, ref)
         run("git", "-C", app_dir, *id_args, "cherry-pick", "FETCH_HEAD")
-    for message, diff in LOCAL_PATCHES:
+    for patch in APP_LOCAL_PATCHES:
+        diff = (script_dir / patch).read_text()
         run("git", "-C", app_dir, "apply", "-", input=diff, text=True)
-        run("git", "-C", app_dir, *id_args, "commit", "--all", "-m", message)
+        run("git", "-C", app_dir, *id_args, "commit", "--all", "-m", patch)
 
     logging.info("\n▶️ Workspace for west (Zephyr OS build tool)")
     env_args = ("nrfutil", "sdk-manager", "toolchain", "env")
-    env_flags = (f"--ncs-version={NCS_VERSION}", "--json")
+    env_flags = (f"--ncs-version={SDK_VERSION}", "--json")
     sdk_vars = stdout_json(*env_args, *env_flags)["data"]["env_variables"]
     sdk_env = {var["key"]: var["value"] for var in sdk_vars}
     sdk_paths = sdk_env.pop("PATH").split(":")
@@ -92,15 +95,23 @@ def main():
     build_board = "circuitdojo_feather_nrf9151/nrf9151/ns"
     run_in_workspace("west", "config", "build.board", build_board)
 
-    script_dir = Path(__file__).parent.resolve()
     cmake_args = {
         "EXTRA_DTC_OVERLAY_FILE": f"{script_dir}/nrf9151_serial_modem.overlay",
         "EXTRA_CONF_FILE": f"{script_dir}/nrf9151_serial_modem.conf",
     }
     cmake_flags = shlex.join(f"-D{k}={v}" for k, v in cmake_args.items())
     run_in_workspace("west", "config", "build.cmake-args", "--", cmake_flags)
-    run_in_workspace("west", "update")
-    logging.info(f"\n✅ NCS workspace ready in {ncs_dir}")
+    run_in_workspace("west", "update")  # resets workspace/nrf to manifest rev
+
+    sdk_nrf_dir = workspace_dir / "nrf"
+    if stdout_text("git", "-C", sdk_nrf_dir, "status", "--porcelain"):
+        ok_logging_setup.exit("%s has uncommitted changes", sdk_nrf_dir)
+    for patch in SDK_LOCAL_PATCHES:
+        diff = (script_dir / patch).read_text()
+        run("git", "-C", sdk_nrf_dir, "apply", "-", input=diff, text=True)
+        run("git", "-C", sdk_nrf_dir, *id_args, "commit", "--all", "-m", patch)
+
+    logging.info(f"\n✅ NCS workspace ready in {install_dir}")
 
 
 if __name__ == "__main__":
