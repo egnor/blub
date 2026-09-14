@@ -114,7 +114,7 @@ void setup() {
     delay(1000);
   }
 
-  pinMode(25, OUTPUT);
+  pinMode(25, INPUT_PULLUP);
   Serial1.setTX(0);
   Serial1.setRX(1);
   Serial1.setFIFOSize(2048);

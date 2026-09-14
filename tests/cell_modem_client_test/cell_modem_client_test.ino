@@ -112,13 +112,15 @@ static void test_modem_client_setup() {
   // Verify the specific initialization and poll cycle
   client->poll();
   VERIFY_A_OP_B_STR(serial.write_buf, ==, "");
+  VERIFY_A_OP_B_INT(gpio_get_dir(MODEM_ENABLE_PIN), ==, 1);
   VERIFY_A_OP_B_INT(gpio_get_out_level(MODEM_ENABLE_PIN), ==, LOW);
 
   for (int i = 0; i < 15 && serial.write_buf.empty(); ++i) {
     client->poll();
     delay(10);
   }
-  VERIFY_A_OP_B_INT(gpio_get_out_level(MODEM_ENABLE_PIN), ==, HIGH);
+  VERIFY_A_OP_B_INT(gpio_get_dir(MODEM_ENABLE_PIN), ==, 0);
+  VERIFY_A_OP_B_INT(gpio_is_pulled_up(MODEM_ENABLE_PIN), >, 0);
   VERIFY_A_OP_B_STR(serial.write_buf, ==, "AT\r");
   fake_modem_reply(&serial);
 
@@ -266,7 +268,7 @@ static void test_mqtt_publish() {
 void setup() {
   Serial1.begin(115200);
   ok_logging_stream = &Serial1;
-  pinMode(MODEM_ENABLE_PIN, OUTPUT);
+  pinMode(MODEM_ENABLE_PIN, INPUT_PULLUP);
   OK_NOTE("#BEGIN-TESTS#");
   test_blub_cert_sha256();
   test_modem_client_setup();

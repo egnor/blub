@@ -93,8 +93,9 @@ class CellModemClientDef : public CellModemClient {
       if (enable_pin < 0) {
         state = State::IDLE;
       } else if (poll_time >= last_serial_output + 100_ms) {
+        pinMode(enable_pin, INPUT_PULLUP);
         digitalWrite(enable_pin, HIGH);
-        OK_NOTE("🔛 Ending modem reset (pin=%d HIGH)", enable_pin);
+        OK_NOTE("🔛 Ending modem reset (p%d PULLUP)", enable_pin);
         state = State::IDLE;
       }
     } else if (state == State::PROBE_DRAIN) {
@@ -117,6 +118,7 @@ class CellModemClientDef : public CellModemClient {
         OK_ERROR("Command timeout", state);
         out_bufs.push("\r+++\"\r");  // unstick modem parser state
         state = State::IDLE;
+        do_probe = true;
       }
     }
 
@@ -129,8 +131,9 @@ class CellModemClientDef : public CellModemClient {
     if (state == State::IDLE && out_bufs.empty()) {
       // hard modem reset at startup or if MQTT fails to thrive
       if (enable_pin >= 0 && poll_time >= next_hard_reset) {
+        pinMode(enable_pin, OUTPUT);
         digitalWrite(enable_pin, LOW);
-        OK_NOTE("📴 Resetting modem (pin=%d LOW)", enable_pin);
+        OK_NOTE("📴 Resetting modem (p%d LOW)", enable_pin);
         state = State::RESET_WAIT;
         last_serial_output = poll_time;  // count RESET edge as output
         next_hard_reset = poll_time + 300_s;
