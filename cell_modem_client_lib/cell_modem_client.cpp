@@ -122,12 +122,6 @@ class CellModemClientDef : public CellModemClient {
       }
     }
 
-    // Explicitly reset the MQTT connection if IP disconnects
-    if (!status.ip_attached && mqtt_state >= MqttState::CONNECTED) {
-      OK_DETAIL("💬 %d -> OK_TO_DISCONNECT (restart)", mqtt_state);
-      mqtt_state = MqttState::OK_TO_DISCONNECT;
-    }
-
     if (state == State::IDLE && out_bufs.empty()) {
       // hard modem reset at startup or if MQTT fails to thrive
       if (enable_pin >= 0 && poll_time >= next_hard_reset) {
@@ -230,7 +224,13 @@ class CellModemClientDef : public CellModemClient {
         next_periodic = {};  // poll right away to turn radio back on
 
         // MQTT connection management
-      } else if (mqtt_state == MqttState::OK_TO_DISCONNECT) {
+      } else if (
+        mqtt_state == MqttState::OK_TO_DISCONNECT ||
+        (mqtt_state >= MqttState::CONNECT_WAIT && !status.ip_attached)
+      ) {
+        if (mqtt_state != MqttState::OK_TO_DISCONNECT) {
+          OK_DETAIL("💬 %d -> OK_TO_DISCONNECT (IP down)", mqtt_state);
+        }
         out_bufs.push("AT#XMQTTCON=0\r");
         OK_DETAIL("💬 OK_TO_DISCONNECT -> OK_TO_CONFIG");
         state = State::OK_WAIT;
@@ -531,8 +531,7 @@ class CellModemClientDef : public CellModemClient {
           state = State::IDLE;
         } else {
           OK_ERROR(
-            "Unexpected #XDATAMODE (state=%d): %s",
-            state, abbr(in_buf).c_str()
+            "Unexpected #XDATAMODE (state=%d): %s", state, abbr(in_buf).c_str()
           );
         }
       }
