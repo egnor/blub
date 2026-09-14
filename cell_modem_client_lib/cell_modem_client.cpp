@@ -132,7 +132,7 @@ class CellModemClientDef : public CellModemClient {
         last_serial_output = poll_time;  // count RESET edge as output
         next_hard_reset = poll_time + 300_s;
         status.running = status.registered = status.ip_attached = false;
-        do_probe = true;  // Once we come back, probe for liveness
+        do_probe = true;  // Once reset completes, probe for liveness
 
       // initial command probe (once at startup)
       } else if (do_probe) {
@@ -226,7 +226,7 @@ class CellModemClientDef : public CellModemClient {
         // MQTT connection management
       } else if (
         mqtt_state == MqttState::OK_TO_DISCONNECT ||
-        (mqtt_state >= MqttState::CONNECT_WAIT && !status.ip_attached)
+        (mqtt_state >= MqttState::CONNACK_WAIT && !status.ip_attached)
       ) {
         if (mqtt_state != MqttState::OK_TO_DISCONNECT) {
           OK_DETAIL("💬 %d -> OK_TO_DISCONNECT (IP down)", mqtt_state);
@@ -256,9 +256,9 @@ class CellModemClientDef : public CellModemClient {
         etl::to_string(mqtt_server.port, out_scratch);
         out_bufs.push(out_scratch);
         out_bufs.push(mqtt_server.cert.empty() ? "\r" : ",0\r");
-        OK_DETAIL("💬 OK_TO_CONNECT -> CONNECT_WAIT");
+        OK_DETAIL("💬 OK_TO_CONNECT -> CONNACK_WAIT");
         state = State::AT_XMQTTCON_WAIT;
-        mqtt_state = MqttState::CONNECT_WAIT;
+        mqtt_state = MqttState::CONNACK_WAIT;
         mqtt_backoff = poll_time + 30_s;  // limit reconnection attempts
       } else if (mqtt_state == MqttState::CONNECTED &&
                  mqtt_subscribed < mqtt_subs.size()) {
@@ -267,18 +267,19 @@ class CellModemClientDef : public CellModemClient {
         out_bufs.push(sub);
         out_bufs.push("\",0\r");
         state = State::OK_WAIT;
-        OK_DETAIL("💬 CONNECTED -> SUBSCRIBE_WAIT");
-        mqtt_state = MqttState::SUBSCRIBE_WAIT;
-      } else if (mqtt_state == MqttState::PUBLISH_PENDING) {
+        OK_DETAIL("💬 CONNECTED -> SUBACK_WAIT");
+        mqtt_state = MqttState::SUBACK_WAIT;
+      } else if (mqtt_state == MqttState::CONNECTED &&
+                 status.mqtt_publish_busy) {
         out_bufs.push("AT#XMQTTPUB=\"");
         out_bufs.push(mqtt_pub.topic);
-        out_bufs.push("\",\"\",0,0,");
+        out_bufs.push("\",\"\",1,0,");
         etl::to_string(mqtt_pub.payload.size(), out_scratch);
         out_bufs.push(out_scratch);
         out_bufs.push("\r");
-        OK_DETAIL("💬 PUBLISH_PENDING -> CONNECTED");
+        OK_DETAIL("💬 CONNECTED -> PUBACK_WAIT");
         state = State::AT_XMQTTPUB_WAIT;
-        mqtt_state = MqttState::CONNECTED;
+        mqtt_state = MqttState::PUBACK_WAIT;
       }
 
       if (!out_bufs.empty()) OK_DETAIL("▶️ %s", abbr(out_bufs).c_str());
@@ -297,23 +298,23 @@ class CellModemClientDef : public CellModemClient {
       out_bufs.pop();
     }
 
-    if (mqtt_state != MqttState::PUBLISH_PENDING &&
-        state != State::AT_XMQTTPUB_WAIT &&
-        state != State::AT_XMQTTPUB_DATA) {
-      mqtt_pub = {};  // Done with borrowed data
-    }
-
     status.mqtt_ready = (
       mqtt_state >= MqttState::CONNECTED &&
       mqtt_subscribed >= mqtt_subs.size()
     );
-    status.mqtt_publish_busy = !mqtt_pub.topic.empty();
+
+    if (!status.mqtt_ready && status.mqtt_publish_busy) {
+      OK_ERROR("MQTT publish lost: %s", abbr(mqtt_pub.topic).c_str());
+      status.mqtt_publish_busy = false;
+      mqtt_pub = {};
+    }
+
     last_poll = poll_time;
     return status;
   }
 
   void publish(MqttMessage pub) override {
-    if (!mqtt_pub.topic.empty()) {
+    if (status.mqtt_publish_busy) {
       OK_ERROR("MQTT publish while busy: %s", abbr(pub.topic).c_str());
     } else if (mqtt_state != MqttState::CONNECTED ||
                mqtt_subscribed < mqtt_subs.size()) {
@@ -325,10 +326,9 @@ class CellModemClientDef : public CellModemClient {
       OK_ERROR("Bad MQTT payload size (%s): %db",
                abbr(pub.topic).c_str(), pub.payload.size());
     } else {
-      mqtt_pub = pub;
-      OK_DETAIL("💬 CONNECTED -> PUBLISH_PENDING");
-      mqtt_state = MqttState::PUBLISH_PENDING;
+      OK_DETAIL("MQTT publish request: %s", abbr(pub.topic).c_str());
       status.mqtt_publish_busy = true;
+      mqtt_pub = pub;
     }
   }
 
@@ -363,9 +363,10 @@ class CellModemClientDef : public CellModemClient {
     OK_TO_DISCONNECT,
     OK_TO_CONFIG,
     OK_TO_CONNECT,
-    CONNECT_WAIT,
+    CONNACK_WAIT,
     CONNECTED,
-    SUBSCRIBE_WAIT,
+    SUBACK_WAIT,
+    PUBACK_WAIT,
     PUBLISH_PENDING,
   };
 
@@ -593,7 +594,7 @@ class CellModemClientDef : public CellModemClient {
         if (mqtt_state == MqttState::OK_TO_DISCONNECT) {
           OK_DETAIL("💬 OK_TO_DISCONNECT -> OK_TO_CONFIG");
           mqtt_state = MqttState::OK_TO_CONFIG;
-        } else if (mqtt_state >= MqttState::CONNECT_WAIT) {
+        } else if (mqtt_state >= MqttState::CONNACK_WAIT) {
           OK_ERROR("MQTT not connected, reconnecting");
           OK_DETAIL("💬 %d -> OK_TO_CONFIG", mqtt_state);
           mqtt_state = MqttState::OK_TO_CONFIG;
@@ -605,7 +606,7 @@ class CellModemClientDef : public CellModemClient {
                  ((eat(&rest, ",") && eat_int(&rest, &sec_tag)) || true)) {
         int const config_sec = mqtt_server.cert.empty() ? -1 : 0;
         if (mqtt_state > MqttState::OK_TO_DISCONNECT &&
-            mqtt_state < MqttState::CONNECT_WAIT) {
+            mqtt_state < MqttState::CONNACK_WAIT) {
           OK_ERROR("Unexpected MQTT connection: %s", abbr(in_buf).c_str());
           OK_DETAIL("💬 %d -> OK_TO_DISCONNECT", mqtt_state);
           mqtt_state = MqttState::OK_TO_DISCONNECT;
@@ -636,9 +637,9 @@ class CellModemClientDef : public CellModemClient {
           if (err != 0) {
             // Connection failed - this could be stale; trigger a poll
             OK_ERROR("MQTT connect failed: %s", abbr(in_buf).c_str());
-            if (mqtt_state >= MqttState::CONNECT_WAIT) do_poll_mqtt = true;
-          } else if (mqtt_state == MqttState::CONNECT_WAIT) {
-            OK_DETAIL("💬 CONNECT_WAIT -> CONNECTED (CONNACK)");
+            if (mqtt_state >= MqttState::CONNACK_WAIT) do_poll_mqtt = true;
+          } else if (mqtt_state == MqttState::CONNACK_WAIT) {
+            OK_DETAIL("💬 CONNACK_WAIT -> CONNECTED (CONNACK)");
             mqtt_state = MqttState::CONNECTED;  // CONNACK confirmed!
             mqtt_subscribed = 0;
           } else {
@@ -646,19 +647,32 @@ class CellModemClientDef : public CellModemClient {
             OK_DETAIL("💬 %d -> OK_TO_DISCONNECT", mqtt_state);
             mqtt_state = MqttState::OK_TO_DISCONNECT;
           }
-        } else if (type == 1) {  // Disconnected
+        } else if (type == 1) {  // DISCONNECT
           // This could be stale; trigger a poll
-          if (mqtt_state >= MqttState::CONNECT_WAIT) do_poll_mqtt = true;
+          if (mqtt_state >= MqttState::CONNACK_WAIT) do_poll_mqtt = true;
+        } else if (type == 3) {  // PUBACK
+          if (mqtt_state != MqttState::PUBACK_WAIT) {
+            OK_ERROR("Unexpected MQTT PUBACK: %s", abbr(in_buf).c_str());
+          } else if (err != 0) {
+            OK_ERROR("MQTT publish failed: %s", abbr(in_buf).c_str());
+            OK_DETAIL("💬 PUBACK_WAIT -> OK_TO_DISCONNECT (!PUBACK)");
+            mqtt_state = MqttState::OK_TO_DISCONNECT;  // reconnect, retry?
+          } else {
+            OK_DETAIL("💬 PUBACK_WAIT -> CONNECTED (PUBACK)");
+            mqtt_state = MqttState::CONNECTED;
+            status.mqtt_publish_busy = false;
+            mqtt_pub = {};  // Message confirmed
+          }
         } else if (type == 7) {  // SUBACK
-          if (mqtt_state != MqttState::SUBSCRIBE_WAIT) {
+          if (mqtt_state != MqttState::SUBACK_WAIT) {
             OK_ERROR("Unexpected MQTT SUBACK: %s", abbr(in_buf).c_str());
           } else if (err != 0) {
             OK_ERROR("MQTT subscribe failed: %s", abbr(in_buf).c_str());
-            OK_DETAIL("💬 SUBSCRIBE_WAIT -> OK_TO_DISCONNECT (!SUBACK)");
+            OK_DETAIL("💬 SUBACK_WAIT -> OK_TO_DISCONNECT (!SUBACK)");
             mqtt_state = MqttState::OK_TO_DISCONNECT;  // reconnect, retry
           } else {
             ++mqtt_subscribed;
-            OK_DETAIL("💬 SUBSCRIBE_WAIT -> CONNECTED (SUBACK)");
+            OK_DETAIL("💬 SUBACK_WAIT -> CONNECTED (SUBACK)");
             mqtt_state = MqttState::CONNECTED;
           }
         }

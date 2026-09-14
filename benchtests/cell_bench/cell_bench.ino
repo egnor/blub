@@ -57,7 +57,7 @@ void loop() {
     } else {
       OK_NOTE("\n📟 %s %s\n", status.hardware.c_str(), status.imeisv.c_str());
       OK_NOTE(
-        "🏷️ %s %s %s %s",
+        "   %s %s %s %s",
         status.versions[0].c_str(),
         status.versions[1].c_str(),
         status.versions[2].c_str(),

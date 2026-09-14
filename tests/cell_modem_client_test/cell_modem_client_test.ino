@@ -250,7 +250,7 @@ static void test_mqtt_publish() {
   auto const& st2 = client->poll();
   VERIFY_A_OP_B_INT(st2.mqtt_publish_busy, >, 0);
   VERIFY_A_OP_B_STR(
-    serial.write_buf, ==, "AT#XMQTTPUB=\"test-topic\",\"\",0,0,12\r"
+    serial.write_buf, ==, "AT#XMQTTPUB=\"test-topic\",\"\",1,0,12\r"
   );
   fake_modem_reply(&serial);
 
@@ -261,8 +261,13 @@ static void test_mqtt_publish() {
   serial.read_buf = "#XDATAMODE: 0\r\n";
 
   auto const& st4 = client->poll();
-  VERIFY_A_OP_B_INT(st4.mqtt_publish_busy, ==, 0);  // after #XDATAMODE: 0
-  VERIFY_A_OP_B_STR(serial.write_buf, ==, "");  // idle after message send
+  VERIFY_A_OP_B_INT(st4.mqtt_publish_busy, >, 0);  // after #XDATAMODE: 0
+  VERIFY_A_OP_B_STR(serial.write_buf, ==, "");  // idle until PUBACK
+  serial.read_buf = "#XMQTTEVT: 3,0\r\n";  // PUBACK
+
+  auto const &st5 = client->poll();
+  VERIFY_A_OP_B_INT(st5.mqtt_publish_busy, ==, 0);  // after PUBACK
+  VERIFY_A_OP_B_STR(serial.write_buf, ==, "");  // continues idle
 }
 
 void setup() {
