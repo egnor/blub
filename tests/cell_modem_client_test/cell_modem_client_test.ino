@@ -1,4 +1,4 @@
-// Unit tests for CellModemClient (cell_modem/cell_modem_client.h)
+// Unit tests for CellModemClient (cell_modem_client_lib/cell_modem_client.h)
 //
 // TODO: cert mismatch on startup (verify cert re-write)
 // TODO: MQTT publish rejected with ERROR (verify busy clear, no auto retry)

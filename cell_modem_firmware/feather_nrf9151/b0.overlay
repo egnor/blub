@@ -1,0 +1,24 @@
+/* B0 (NSIB) bootloader overlay for the nRF9151 Feather (see partitions.dtsi). */
+
+#include "partitions.dtsi"
+
+/ {
+	chosen {
+		zephyr,code-partition = &b0_partition;
+	};
+};
+
+/* B0 and MCUboot must use matching SRAM layouts (see mcuboot.overlay). */
+
+/delete-node/ &sram0_s;
+/delete-node/ &sram0_ns;
+
+&sram0 {
+	sram0_s: sram@0 {
+		reg = <0x0 0xc000>;
+	};
+
+	sram0_ns: sram@c000 {
+		reg = <0xc000 0x34000>;
+	};
+};

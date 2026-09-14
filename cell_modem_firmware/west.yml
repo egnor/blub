@@ -1,0 +1,35 @@
+# West manifest for building Nordic's Serial Modem firmware for the
+# Circuit Dojo nRF9151 Feather. See README.md for context.
+#
+# This directory is the west "manifest repository" (linked into the west
+# workspace by nrf9151_build_setup.py) and also a Zephyr module
+# (see zephyr/module.yml) that adds Feather-specific overlays at build time.
+
+manifest:
+  self:
+    path: cell_modem_firmware
+
+  remotes:
+    - name: ncs
+      url-base: https://github.com/nrfconnect
+    - name: circuitdojo
+      url-base: https://github.com/circuitdojo
+
+  projects:
+    # Nordic's Serial Modem app. Its own west.yml pins nRF Connect SDK (nrf)
+    # and, through that, Zephyr and everything else; "import" pulls that in.
+    # The toolchain bundle (SDK_VERSION in nrf9151_build_setup.py) must match
+    # the nrf revision this pins.
+    - name: ncs-serial-modem
+      remote: ncs
+      revision: v2.0.0-preview3  # pins nrf v3.4.1-rc1
+      import: true
+
+    # Circuit Dojo board definitions (circuitdojo_feather_nrf9151 etc).
+    # Deliberately NOT imported: its west.yml pins its own (older) NCS.
+    # Branch names track NCS minor versions (v3.4.x); pin a commit on the
+    # branch matching the NCS version above.
+    - name: nfed
+      remote: circuitdojo
+      repo-path: nrf9160-feather-examples-and-drivers
+      revision: c248cc5821ab269f162bdb8edd3a23311f2f5364  # v3.4.x, 2026-06-21

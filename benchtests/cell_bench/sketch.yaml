@@ -13,5 +13,5 @@ profiles:
       - OK Little Layout (0.3)
       - OK Micro Dock (0.3)
       - U8g2 (2.36.19)
-      - dir: ../../cell_modem
+      - dir: ../../cell_modem_client_lib
       - dir: ../../config_lib

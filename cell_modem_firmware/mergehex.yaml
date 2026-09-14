@@ -1,0 +1,6 @@
+# For "west ncs-mergehex": combine sysbuild's secure (bootloaders, provisioning)
+# and non-secure (app) merged images into one whole-flash image.
+# (ncs-serial-modem's own mergehex.yaml only lists Nordic's boards.)
+merged.hex:
+- merged_circuitdojo_feather_nrf9151_3_nrf9151.hex
+- merged_circuitdojo_feather_nrf9151_3_nrf9151_ns.hex

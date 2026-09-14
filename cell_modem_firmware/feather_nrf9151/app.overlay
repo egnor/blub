@@ -1,0 +1,88 @@
+/*
+ * Serial modem app overlay for the Circuit Dojo nRF9151 Feather.
+ * (Merges circuitdojo/ncs-serial-modem app/boards/circuitdojo_feather_nrf9151_ns.overlay
+ * with our own UART routing.)
+ *
+ * UARTs, per the nfed board definition:
+ *   uart0  P0.11/P0.10  RP2040 USB bridge   115200
+ *   uart1  P0.24/P0.23  Feather TX/RX pins  1000000 (overridden below)
+ *
+ * We put the AT command interface (ncs,sm-uart) on uart1, the Feather pins.
+ * The zephyr,console UART must then be something else: the serial modem
+ * suspends the console UART at startup (with INIT ERROR on failure), and
+ * upstream now build-asserts that it differs from the AT UART. Logs actually
+ * go to RTT (see app.conf), so the console UART is otherwise unused.
+ */
+
+#include "partitions.dtsi"
+
+/ {
+	chosen {
+		ncs,sm-uart = &uart1;
+		zephyr,console = &uart0;
+	};
+};
+
+&uart0 {
+	status = "okay";
+};
+
+&uart1 {
+	status = "okay";
+	current-speed = <115200>;  /* runs at 1 Mbaud by default */
+};
+
+&button0 {
+	status = "disabled";
+};
+
+/*
+ * Application SRAM layout. Keep the modem trace IPC area from the Feather
+ * board, but reduce secure RAM so the non-secure serial modem app has room.
+ * (From circuitdojo/ncs-serial-modem commit 797d4d2.)
+ */
+
+/delete-node/ &sram0_s;
+/delete-node/ &sram0_ns;
+
+/ {
+	reserved-memory {
+		sram0_s: image_s@20000000 {
+			reg = <0x20000000 DT_SIZE_K(16)>;
+		};
+
+		sram0_ns: image_ns@20004000 {
+			reg = <0x20004000 DT_SIZE_K(240)>;
+			#address-cells = <1>;
+			#size-cells = <1>;
+			ranges = <0x0 0x20004000 DT_SIZE_K(240)>;
+
+			sram0_modem: sram0_ns_modem: image_modem@0 {
+				reg = <0x0 DT_SIZE_K(40)>;
+				#address-cells = <1>;
+				#size-cells = <1>;
+				ranges = <0x0 0x0 DT_SIZE_K(40)>;
+
+				cpuapp_cpucell_ipc_shm_ctrl: image_modem_ctrl@0 {
+					reg = <0x0 0x728>;
+				};
+
+				cpuapp_cpucell_ipc_shm_heap: image_modem_tx@728 {
+					reg = <0x728 0x20d8>;
+				};
+
+				cpucell_cpuapp_ipc_shm_heap: image_modem_rx@2800 {
+					reg = <0x2800 0x2000>;
+				};
+
+				cpucell_cpuapp_ipc_shm_trace: image_modem_trace@4800 {
+					reg = <0x4800 0x4000>;
+				};
+			};
+
+			sram0_ns_app: image_ns_app@a000 {
+				reg = <0xa000 DT_SIZE_K(200)>;
+			};
+		};
+	};
+};

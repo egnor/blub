@@ -1,0 +1,6 @@
+# Registers this directory as a Zephyr module so sysbuild/CMakeLists.txt runs
+# during sysbuild configuration and can attach Feather-specific overlays to
+# the app, MCUboot and B0 images (see feather_nrf9151/).
+name: cell_modem_firmware
+build:
+  sysbuild-cmake: sysbuild

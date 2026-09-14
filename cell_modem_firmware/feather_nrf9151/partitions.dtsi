@@ -1,0 +1,100 @@
+/*
+ * Flash partition layout for the nRF9151 Feather running Nordic's Serial
+ * Modem with the B0 (NSIB) + updatable MCUboot bootloader chain, shared by
+ * app.overlay, mcuboot.overlay and b0.overlay (all images must agree).
+ *
+ * This is the same layout ncs-serial-modem uses for the nRF9151 DK; it
+ * replaces the nfed board's default (MCUboot-only, larger TF-M) layout.
+ * Originally from circuitdojo/ncs-serial-modem commit 797d4d2.
+ *
+ * 0x0000_0000  b0 (NSIB)                    ( 32 kB)
+ * 0x0000_8000  s0 (MCUboot image, slot 0)   ( 48 kB)
+ * 0x0001_4000  s1 (MCUboot image, slot 1)   ( 48 kB)
+ * 0x0002_0000  slot0 (primary app)          (444 kB)
+ *   0x0002_0000  TF-M secure                ( 32 kB)
+ *   0x0002_8000  Application (non-secure)   (412 kB)
+ * 0x0008_f000  slot1 (secondary app)        (440 kB)
+ * 0x000f_d000  Non-secure storage           ( 12 kB)
+ */
+
+/delete-node/ &boot_partition;
+/delete-node/ &slot0_partition;
+/delete-node/ &slot1_partition;
+/delete-node/ &tfm_ps_partition;
+/delete-node/ &tfm_its_partition;
+/delete-node/ &tfm_otp_partition;
+/delete-node/ &storage_partition;
+
+&flash0 {
+	partitions {
+		compatible = "fixed-partitions";
+		#address-cells = <1>;
+		#size-cells = <1>;
+
+		b0_partition: partition@0 {
+			compatible = "zephyr,mapped-partition";
+			label = "b0";
+			reg = <0x0 0x8000>;
+		};
+
+		s0_partition: boot_partition: partition@8000 {
+			compatible = "zephyr,mapped-partition";
+			label = "mcuboot-0";
+			reg = <0x8000 0xc000>;
+		};
+
+		s1_partition: partition@14000 {
+			compatible = "zephyr,mapped-partition";
+			label = "mcuboot-1";
+			reg = <0x14000 0xc000>;
+		};
+
+		slot0_partition: partition@20000 {
+			compatible = "zephyr,mapped-partition";
+			label = "image-0";
+			reg = <0x20000 0x6f000>;
+			ranges = <0x0 0x20000 0x6f000>;
+			#address-cells = <1>;
+			#size-cells = <1>;
+
+			slot0_s_partition: partition@0 {
+				compatible = "zephyr,mapped-partition";
+				label = "image-0-secure";
+				reg = <0x0 0x8000>;
+			};
+
+			slot0_ns_partition: partition@8000 {
+				compatible = "zephyr,mapped-partition";
+				label = "image-0-nonsecure";
+				reg = <0x8000 0x67000>;
+			};
+		};
+
+		slot1_partition: partition@8f000 {
+			compatible = "zephyr,mapped-partition";
+			label = "image-1";
+			reg = <0x8f000 0x6e000>;
+			ranges = <0x0 0x8f000 0x6e000>;
+			#address-cells = <1>;
+			#size-cells = <1>;
+
+			slot1_s_partition: partition@0 {
+				compatible = "zephyr,mapped-partition";
+				label = "image-1-secure";
+				reg = <0x0 0x8000>;
+			};
+
+			slot1_ns_partition: partition@8000 {
+				compatible = "zephyr,mapped-partition";
+				label = "image-1-nonsecure";
+				reg = <0x8000 0x66000>;
+			};
+		};
+
+		nonsecure_storage: storage_partition: partition@fd000 {
+			compatible = "zephyr,mapped-partition";
+			label = "nonsecure-storage";
+			reg = <0xfd000 0x3000>;
+		};
+	};
+};
