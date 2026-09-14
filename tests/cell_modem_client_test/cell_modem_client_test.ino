@@ -18,6 +18,8 @@ char const* const ok_logging_config = "DETAIL";
 
 static OkLoggingContext OK_CONTEXT("cell_modem_client_test");
 
+constexpr int MODEM_ENABLE_PIN = 13;
+
 static MqttServerConfig fake_mqtt_config() {
   MqttServerConfig config;
   config.host = "fake-server";
@@ -103,14 +105,24 @@ static void test_modem_client_setup() {
   FakeSerial serial;
 
   etl::vector<etl::string_view, 2> subs({"topic1", "topic2"});
-  auto const client = make_cell_modem_client(&serial, fake_mqtt_config(), subs);
+  auto const client = make_cell_modem_client(
+    &serial, MODEM_ENABLE_PIN, fake_mqtt_config(), subs
+  );
 
   // Verify the specific initialization and poll cycle
   client->poll();
+  VERIFY_A_OP_B_STR(serial.write_buf, ==, "");
+  VERIFY_A_OP_B_INT(gpio_get_out_level(MODEM_ENABLE_PIN), ==, LOW);
+
+  for (int i = 0; i < 15 && serial.write_buf.empty(); ++i) {
+    client->poll();
+    delay(10);
+  }
+  VERIFY_A_OP_B_INT(gpio_get_out_level(MODEM_ENABLE_PIN), ==, HIGH);
   VERIFY_A_OP_B_STR(serial.write_buf, ==, "AT\r");
   fake_modem_reply(&serial);
 
-  for (int i = 0; i < 100 && serial.write_buf.empty(); ++i) {
+  for (int i = 0; i < 15 && serial.write_buf.empty(); ++i) {
     client->poll();
     delay(10);
   }
@@ -224,7 +236,9 @@ static void test_modem_client_setup() {
 static void test_mqtt_publish() {
   OK_NOTE("\n#TEST# test_mqtt_publish");
   FakeSerial serial;
-  auto const client = make_cell_modem_client(&serial, fake_mqtt_config(), {});
+  auto const client = make_cell_modem_client(
+    &serial, MODEM_ENABLE_PIN, fake_mqtt_config(), {}
+  );
   if (!run_client_setup(client, &serial)) return;
 
   auto const& st1 = client->poll();
@@ -252,6 +266,7 @@ static void test_mqtt_publish() {
 void setup() {
   Serial1.begin(115200);
   ok_logging_stream = &Serial1;
+  pinMode(MODEM_ENABLE_PIN, OUTPUT);
   OK_NOTE("#BEGIN-TESTS#");
   test_blub_cert_sha256();
   test_modem_client_setup();

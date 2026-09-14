@@ -20,10 +20,10 @@ static const OkLoggingContext OK_CONTEXT("cell_modem_client");
 class CellModemClientDef : public CellModemClient {
  public:
   CellModemClientDef(
-    HardwareSerial* serial,
+    HardwareSerial* serial, int en_pin,
     MqttServerConfig const& server,
     etl::span<etl::string_view const> subs
-  ) : serial(serial), mqtt_server(server), mqtt_subs(subs) {
+  ) : serial(serial), enable_pin(en_pin), mqtt_server(server), mqtt_subs(subs) {
     // Catch things that would cause crashes or bad command syntax
     OK_FATAL_IF(serial == nullptr);
     if (server.cert.find_first_of("\"") != etl::string_view::npos)  // CRLF OK
@@ -47,6 +47,10 @@ class CellModemClientDef : public CellModemClient {
     if (auto const elapsed = poll_time - last_poll; elapsed > 50_ms) {
       OK_ERROR("Slow poll (%.3fs since last)", raw_count<secd>(elapsed));
     }
+
+    //
+    // Read serial input
+    //
 
     for (int av = 0; av || ((av = serial->available()) > 0); --av) {
       last_serial_input = poll_time;
@@ -81,13 +85,25 @@ class CellModemClientDef : public CellModemClient {
       }
     }
 
-    if (state == State::PROBE_DRAIN) {
+    //
+    // State timeouts
+    //
+
+    if (state == State::RESET_WAIT) {
+      if (enable_pin < 0) {
+        state = State::IDLE;
+      } else if (poll_time >= last_serial_output + 100_ms) {
+        digitalWrite(enable_pin, HIGH);
+        OK_NOTE("🔛 Ending modem reset (pin=%d HIGH)", enable_pin);
+        state = State::IDLE;
+      }
+    } else if (state == State::PROBE_DRAIN) {
       if (poll_time >= last_serial_input + 100_ms) {
         OK_DETAIL("✅️ Startup probe complete");
         state = State::IDLE;
+        next_periodic = {};
       }
     } else if (state != State::IDLE) {
-      // Measure the command timeout after output buffers are emptied
       steady_clock::time_point state_deadline;
       if (state == State::AT_XMQTTCON_WAIT) {
         state_deadline = last_serial_output + 60_s;
@@ -104,24 +120,25 @@ class CellModemClientDef : public CellModemClient {
       }
     }
 
-    if (periodic_step < 0 && poll_time >= next_periodic) {
-      OK_DETAIL(
-        "⏱️ Periodic check (%.1f > %.1fs)",
-        raw_count<secd>(poll_time), raw_count<secd>(next_periodic)
-      );
-      next_periodic = poll_time + 10_s;
-      periodic_step = 0;
-      do_poll_reg = do_poll_ip = do_poll_mqtt = true;
-    }
-
-    if (do_probe && mqtt_state != MqttState::OK_TO_DISCONNECT) {
+    // Explicitly reset the MQTT connection if IP disconnects
+    if (!status.ip_attached && mqtt_state >= MqttState::CONNECTED) {
       OK_DETAIL("💬 %d -> OK_TO_DISCONNECT (restart)", mqtt_state);
       mqtt_state = MqttState::OK_TO_DISCONNECT;
     }
 
     if (state == State::IDLE && out_bufs.empty()) {
+      // hard modem reset at startup or if MQTT fails to thrive
+      if (enable_pin >= 0 && poll_time >= next_hard_reset) {
+        digitalWrite(enable_pin, LOW);
+        OK_NOTE("📴 Resetting modem (pin=%d LOW)", enable_pin);
+        state = State::RESET_WAIT;
+        last_serial_output = poll_time;  // count RESET edge as output
+        next_hard_reset = poll_time + 300_s;
+        status.running = status.registered = status.ip_attached = false;
+        do_probe = true;  // Once we come back, probe for liveness
+
       // initial command probe (once at startup)
-      if (do_probe) {
+      } else if (do_probe) {
         out_bufs.push("AT\r");  // probe for modem, wait to drain buffers
         state = State::PROBE_WAIT;
         do_probe = false;
@@ -161,10 +178,16 @@ class CellModemClientDef : public CellModemClient {
         cert_state = CertState::UNKNOWN;  // re-verify after write
 
         // periodic poll steps
-      } else if (periodic_step == 0) {
+      } else if (periodic_step < 0 && poll_time >= next_periodic) {
+        OK_DETAIL(
+          "⏱️ Periodic check (%.1f > %.1fs)",
+          raw_count<secd>(poll_time), raw_count<secd>(next_periodic)
+        );
+        next_periodic = poll_time + 10_s;
         out_bufs.push("AT+CMEE=1\r");  // enable extended errors
         state = State::OK_WAIT;
-        ++periodic_step;
+        periodic_step = 1;
+        do_poll_reg = do_poll_ip = do_poll_mqtt = true;
       } else if (periodic_step == 1) {
         out_bufs.push("AT%XPDNCFG=1\r");  // always-on packet network
         state = State::OK_WAIT;
@@ -196,26 +219,26 @@ class CellModemClientDef : public CellModemClient {
         state = State::OK_WAIT;
         do_poll_mqtt = false;
 
-        // restart the radio if it doesn't seem to be running
-      } else if (poll_time - last_radio_on > 60_s) {
-        out_bufs.push("AT+CFUN=4\r");
+        // soft radio restart if it doesn't seem to be running
+      } else if (poll_time >= next_soft_reset) {
+        out_bufs.push("AT+CFUN=4\r");  // turn radio off
         state = State::OK_WAIT;
-        last_radio_on = poll_time;  // don't re-cycle immediately
+        next_soft_reset = poll_time + 300_s;  // time for it to work
         next_periodic = {};  // poll right away to turn radio back on
 
         // MQTT connection management
       } else if (mqtt_state == MqttState::OK_TO_DISCONNECT) {
         out_bufs.push("AT#XMQTTCON=0\r");
-        state = State::OK_WAIT;
         OK_DETAIL("💬 OK_TO_DISCONNECT -> OK_TO_CONFIG");
+        state = State::OK_WAIT;
         mqtt_state = MqttState::OK_TO_CONFIG;
       } else if (mqtt_state == MqttState::OK_TO_CONFIG &&
                  !status.imeisv.empty()) {
         out_bufs.push("AT#XMQTTCFG=\"");
         out_bufs.push(status.imeisv);
         out_bufs.push("\",60,1\r");
-        state = State::OK_WAIT;
         OK_DETAIL("💬 OK_TO_CONFIG -> OK_TO_CONNECT");
+        state = State::OK_WAIT;
         mqtt_state = MqttState::OK_TO_CONNECT;
       } else if (mqtt_state == MqttState::OK_TO_CONNECT &&
                  status.ip_attached && poll_time >= mqtt_backoff &&
@@ -230,8 +253,8 @@ class CellModemClientDef : public CellModemClient {
         etl::to_string(mqtt_server.port, out_scratch);
         out_bufs.push(out_scratch);
         out_bufs.push(mqtt_server.cert.empty() ? "\r" : ",0\r");
-        state = State::AT_XMQTTCON_WAIT;
         OK_DETAIL("💬 OK_TO_CONNECT -> CONNECT_WAIT");
+        state = State::AT_XMQTTCON_WAIT;
         mqtt_state = MqttState::CONNECT_WAIT;
         mqtt_backoff = poll_time + 30_s;  // limit reconnection attempts
       } else if (mqtt_state == MqttState::CONNECTED &&
@@ -250,8 +273,8 @@ class CellModemClientDef : public CellModemClient {
         etl::to_string(mqtt_pub.payload.size(), out_scratch);
         out_bufs.push(out_scratch);
         out_bufs.push("\r");
-        state = State::AT_XMQTTPUB_WAIT;
         OK_DETAIL("💬 PUBLISH_PENDING -> CONNECTED");
+        state = State::AT_XMQTTPUB_WAIT;
         mqtt_state = MqttState::CONNECTED;
       }
 
@@ -313,6 +336,7 @@ class CellModemClientDef : public CellModemClient {
  private:
   enum class State {
     IDLE,
+    RESET_WAIT,
     PROBE_WAIT,
     PROBE_DRAIN,
     AT_CGMM_WAIT,
@@ -343,6 +367,7 @@ class CellModemClientDef : public CellModemClient {
   };
 
   HardwareSerial* const serial;
+  int const enable_pin;
   MqttServerConfig const mqtt_server;
   etl::span<etl::string_view const> const mqtt_subs;
   CellModemStatus status;
@@ -351,8 +376,9 @@ class CellModemClientDef : public CellModemClient {
   steady_clock::time_point last_poll = steady_clock::time_point::max();
   steady_clock::time_point last_serial_input = {};
   steady_clock::time_point last_serial_output = {};
-  steady_clock::time_point last_radio_on = steady_clock::time_point::max();
   steady_clock::time_point next_periodic = {};
+  steady_clock::time_point next_soft_reset = {};
+  steady_clock::time_point next_hard_reset = {};
   int periodic_step = -1;
   bool do_probe = true;
   bool do_poll_reg = true;
@@ -376,6 +402,11 @@ class CellModemClientDef : public CellModemClient {
   }
 
   void handle_input_line() {
+    if (state == State::RESET_WAIT) {
+      OK_ERROR("Unexpected data in reset: %s", abbr(in_buf).c_str());
+      return;
+    }
+
     etl::string_view rest(in_buf);
 
     //
@@ -387,11 +418,11 @@ class CellModemClientDef : public CellModemClient {
       if (!status.running) {
         OK_NOTE("Modem init: %s", abbr(in_buf).c_str());
       } else {
-        OK_ERROR("Modem reset: %s", abbr(in_buf).c_str());
+        OK_ERROR("Modem restart: %s", abbr(in_buf).c_str());
         status.failed = true;
       }
       state = State::IDLE;
-      status.running = false;
+      status.running = status.registered = status.ip_attached = false;
       next_periodic = {};  // initialize immediately
       out_bufs = {};  // stop anything we were doing
       do_probe = true;
@@ -401,7 +432,7 @@ class CellModemClientDef : public CellModemClient {
     if (eat(&rest, "#XMODEM:") || eat(&rest, "INIT ERROR")) {
       OK_ERROR("Modem fault (state=%d): %s", state, abbr(in_buf).c_str());
       state = State::OK_WAIT;  // really waiting for "Ready"
-      status.running = false;
+      status.running = status.registered = status.ip_attached = false;
       status.failed = true;
       out_bufs = {};  // stop anything we were doing
       do_probe = true;
@@ -509,7 +540,7 @@ class CellModemClientDef : public CellModemClient {
     if (eat(&rest, "%XMONITOR:")) {
       int reg;
       if (eat_int(&rest, &reg)) {
-        if (reg != 0) last_radio_on = last_poll;
+        if (reg != 0) next_soft_reset = last_poll + 60_s;  // push forward
         status.running = (reg == 1 || reg == 2 || reg == 5);
         status.registered = (reg == 1 || reg == 5);
         status.roaming = (reg == 5);
@@ -557,7 +588,10 @@ class CellModemClientDef : public CellModemClient {
       etl::string_view cid, host;
       int port, sec_tag = -1;
       if (eat(&rest, "0")) {
-        if (mqtt_state >= MqttState::CONNECT_WAIT) {
+        if (mqtt_state == MqttState::OK_TO_DISCONNECT) {
+          OK_DETAIL("💬 OK_TO_DISCONNECT -> OK_TO_CONFIG");
+          mqtt_state = MqttState::OK_TO_CONFIG;
+        } else if (mqtt_state >= MqttState::CONNECT_WAIT) {
           OK_ERROR("MQTT not connected, reconnecting");
           OK_DETAIL("💬 %d -> OK_TO_CONFIG", mqtt_state);
           mqtt_state = MqttState::OK_TO_CONFIG;
@@ -593,6 +627,9 @@ class CellModemClientDef : public CellModemClient {
     if (eat(&rest, "#XMQTTEVT:")) {
       int type, err;
       if (eat_int(&rest, &type) && eat(&rest, ",") && eat_int(&rest, &err)) {
+        // Hard reset after 5 minutes without any MQTT signal
+        if (type != 1 && err == 0) next_hard_reset = last_poll + 300_s;
+
         if (type == 0) {  // CONNACK (or connection failed)
           if (err != 0) {
             // Connection failed - this could be stale; trigger a poll
@@ -610,10 +647,6 @@ class CellModemClientDef : public CellModemClient {
         } else if (type == 1) {  // Disconnected
           // This could be stale; trigger a poll
           if (mqtt_state >= MqttState::CONNECT_WAIT) do_poll_mqtt = true;
-        } else if (type == 2) {  // PUBLISH
-          // no action; #XMQTTMSG carries the actual message
-        } else if (type == 3) {  // PUBACK
-          // no action; we onyl use QoS-0 fire and forget
         } else if (type == 7) {  // SUBACK
           if (mqtt_state != MqttState::SUBSCRIBE_WAIT) {
             OK_ERROR("Unexpected MQTT SUBACK: %s", abbr(in_buf).c_str());
@@ -626,11 +659,6 @@ class CellModemClientDef : public CellModemClient {
             OK_DETAIL("💬 SUBSCRIBE_WAIT -> CONNECTED (SUBACK)");
             mqtt_state = MqttState::CONNECTED;
           }
-        } else if (type == 9) {  // PINGRESP
-          // no action; the MQTT client tracks staleness
-        } else {
-          // remaining types are related to QoS-2 messages, etc.
-          OK_ERROR("Unexpected #XMQTTEVT: %s", abbr(in_buf).c_str());
         }
       }
       if (!eat(&rest, "")) OK_ERROR("Bad #XMQTTEVT: %s", abbr(in_buf).c_str());
@@ -756,9 +784,9 @@ class CellModemClientDef : public CellModemClient {
 };
 
 etl::unique_ptr<CellModemClient> make_cell_modem_client(
-  arduino::HardwareSerial* serial,
+  arduino::HardwareSerial* serial, int en_pin,
   MqttServerConfig const& server,
   etl::span<etl::string_view const> subs
 ) {
-  return etl::unique_ptr(new CellModemClientDef(serial, server, subs));
+  return etl::unique_ptr(new CellModemClientDef(serial, en_pin, server, subs));
 }

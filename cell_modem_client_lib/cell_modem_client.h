@@ -55,7 +55,7 @@ class CellModemClient {
 };
 
 etl::unique_ptr<CellModemClient> make_cell_modem_client(
-  arduino::HardwareSerial* serial,
+  arduino::HardwareSerial* serial, int enable_pin,
   MqttServerConfig const& mqtt_config,
   etl::span<etl::string_view const> mqtt_subs
 );

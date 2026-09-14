@@ -108,17 +108,17 @@ void setup() {
   OK_NOTE("BLUB Cell Modem Bench Test");
   ok_dock_init_feather_v8();
   ok_dock_layout->line_printf(0, "\v\f10\1Cell Bench");
-
   for (int c = 5; c >= 0; --c) {
     OK_NOTE("⏳ Startup delay %dsec...", c);
     ok_dock_layout->line_printf(1, "\f9Start %d...", c);
     delay(1000);
   }
 
+  pinMode(25, OUTPUT);
   Serial1.setTX(0);
   Serial1.setRX(1);
   Serial1.setFIFOSize(2048);
   Serial1.begin(115200);
   static const etl::string_view subs[] = {"cell_bench/sub"};
-  cell_modem = make_cell_modem_client(&Serial1, blub_mqtt_config, subs);
+  cell_modem = make_cell_modem_client(&Serial1, 25, blub_mqtt_config, subs);
 }
