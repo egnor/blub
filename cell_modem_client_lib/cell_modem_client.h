@@ -38,7 +38,8 @@ struct CellModemStatus {
   uint32_t ip_addr = 0;
 
   // MQTT status
-  bool mqtt_ready = false, mqtt_publish_busy = false, mqtt_incoming = false;
+  bool mqtt_ready = false, mqtt_publish_busy = false;
+  bool mqtt_receive_ready = false;
 };
 
 class CellModemClient {
@@ -50,8 +51,8 @@ class CellModemClient {
   // must remain valid until poll().mqtt_publish_busy is false again
   virtual void publish(MqttMessage) = 0;
 
-  // Requires poll().mqtt_incoming; views are valid until the next poll()
-  virtual MqttMessage incoming() const = 0;
+  // Requires poll().mqtt_receive_ready; views are valid until the next poll()
+  virtual MqttMessage receive() = 0;
 };
 
 etl::unique_ptr<CellModemClient> make_cell_modem_client(

@@ -93,6 +93,15 @@ void loop() {
     }
   }
 
+  if (status.mqtt_receive_ready) {
+    auto const message = cell_modem->receive();
+    OK_NOTE(
+      "\n📩 MQTT message:\n   Topic: [%.*s]\n   Payload: [%.*s]",
+      message.topic.size(), message.topic.data(),
+      message.payload.size(), message.payload.data()
+    );
+  }
+
   if (loop_time > next_publish_time &&
       status.mqtt_ready && !status.mqtt_publish_busy) {
     next_publish_time = loop_time + 1_s;

@@ -18,9 +18,9 @@ char const* const ok_logging_config = "DETAIL";
 
 static OkLoggingContext OK_CONTEXT("cell_modem_client_test");
 
-constexpr int MODEM_ENABLE_PIN = 13;
+constexpr int EN_PIN = 13;
 
-static MqttServerConfig fake_mqtt_config() {
+static MqttServerConfig mqtt_config() {
   MqttServerConfig config;
   config.host = "fake-server";
   config.port = 8883;
@@ -34,45 +34,44 @@ static MqttServerConfig fake_mqtt_config() {
 static bool fake_modem_reply(FakeSerial* serial) {
   // Just enough response logic to get through initialization
   bool success = true;
-  if (serial->write_buf.starts_with("AT+CGMM")) {
+  auto const command = etl::trim_from_view_left(serial->write_buf, "\r\n\"+");
+  if (command.starts_with("AT+CGMM")) {
     serial->read_buf = "Fake Hardware\r\nOK\r\n";
-  } else if (serial->write_buf.starts_with("AT+CGMR")) {
+  } else if (command.starts_with("AT+CGMR")) {
     serial->read_buf = "Fake Revision\r\nOK\r\n";
-  } else if (serial->write_buf.starts_with("AT+CGSN=2")) {
+  } else if (command.starts_with("AT+CGSN=2")) {
     serial->read_buf = "+CGSN: \"1122222233333344\"\r\nOK\r\n";
-  } else if (serial->write_buf.starts_with("AT+CGPADDR")) {
+  } else if (command.starts_with("AT+CGPADDR")) {
     serial->read_buf = "+CGPADDR: 0,\"12.34.56.78\"\r\nOK\r\n";
-  } else if (serial->write_buf.starts_with("AT%CMNG=1,")) {
+  } else if (command.starts_with("AT%CMNG=1,")) {
     serial->read_buf = "%CMNG: 0,0,\"Fake Cert Hash\"\r\nOK\r\n";
-  } else if (serial->write_buf.starts_with("AT%XMONITOR")) {
+  } else if (command.starts_with("AT%XMONITOR")) {
     serial->read_buf = "%XMONITOR: 5,"
       "\"\",\"\",\"111222\",\"1234\",7,12,\"12345678\",123,1234,12,12,"
       "\"\",\"00000000\",\"00000000\",\"00000000\"\r\nOK\r\n";
-  } else if (serial->write_buf.starts_with("AT#XMQTTCON?")) {
+  } else if (command.starts_with("AT#XMQTTCON?")) {
     serial->read_buf = "#XMQTTCON: 1\r\nOK\r\n";
-  } else if (serial->write_buf.starts_with("AT#XMQTTCON=0")) {
+  } else if (command.starts_with("AT#XMQTTCON=0")) {
     serial->read_buf = "OK\r\n#XMQTTEVT: 1,0\r\n";  // Disconnect
-  } else if (serial->write_buf.starts_with("AT#XMQTTCON=1")) {
+  } else if (command.starts_with("AT#XMQTTCON=1")) {
     serial->read_buf = "OK\r\n#XMQTTEVT: 0,0\r\n";  // CONNACK
-  } else if (serial->write_buf.starts_with("AT#XMQTTSUB=")) {
+  } else if (command.starts_with("AT#XMQTTSUB=")) {
     serial->read_buf = "OK\r\n#XMQTTEVT: 7,0\r\n";  // SUBACK
-  } else if (serial->write_buf.starts_with("AT#XSMVER")) {
+  } else if (command.starts_with("AT#XSMVER")) {
     serial->read_buf = "#XSMVER: \"Fake SM\",\"Fake NCS\",\"Blub\"\r\nOK\r\n";
-  } else if (serial->write_buf.starts_with("AT")) {
+  } else if (command.starts_with("AT")) {
     serial->read_buf = "OK\r\n";  // nod and smile
   } else {
-    OK_ERROR("#TEST-FAIL# Bad client output: [%s]", serial->write_buf.c_str());
+    OK_ERROR("#TEST-FAIL# Bad client output: [%s]", command.c_str());
     success = false;
   }
   serial->write_buf.clear();
   return success;
 }
 
-static bool run_client_setup(
-  etl::unique_ptr<CellModemClient> const& client, FakeSerial* serial
-) {
+static bool run_client_setup(CellModemClient* cm, FakeSerial* serial) {
   for (int loop = 0; loop < 100; ++loop) {
-    auto const status = client->poll();
+    auto const status = cm->poll();
     if (!serial->write_buf.empty()) {
       if (!fake_modem_reply(serial)) return false;
     } else if (status.mqtt_ready) {
@@ -105,111 +104,109 @@ static void test_modem_client_setup() {
   FakeSerial serial;
 
   etl::vector<etl::string_view, 2> subs({"topic1", "topic2"});
-  auto const client = make_cell_modem_client(
-    &serial, MODEM_ENABLE_PIN, fake_mqtt_config(), subs
-  );
+  auto const cm = make_cell_modem_client(&serial, EN_PIN, mqtt_config(), subs);
 
   // Verify the specific initialization and poll cycle
-  client->poll();
+  cm->poll();
   VERIFY_A_OP_B_STR(serial.write_buf, ==, "");
-  VERIFY_A_OP_B_INT(gpio_get_dir(MODEM_ENABLE_PIN), ==, 1);
-  VERIFY_A_OP_B_INT(gpio_get_out_level(MODEM_ENABLE_PIN), ==, LOW);
+  VERIFY_A_OP_B_INT(gpio_get_dir(EN_PIN), ==, 1);
+  VERIFY_A_OP_B_INT(gpio_get_out_level(EN_PIN), ==, LOW);
 
   for (int i = 0; i < 15 && serial.write_buf.empty(); ++i) {
-    client->poll();
+    cm->poll();
     delay(10);
   }
-  VERIFY_A_OP_B_INT(gpio_get_dir(MODEM_ENABLE_PIN), ==, 0);
-  VERIFY_A_OP_B_INT(gpio_is_pulled_up(MODEM_ENABLE_PIN), >, 0);
-  VERIFY_A_OP_B_STR(serial.write_buf, ==, "AT\r");
+  VERIFY_A_OP_B_INT(gpio_get_dir(EN_PIN), ==, 0);
+  VERIFY_A_OP_B_INT(gpio_is_pulled_up(EN_PIN), >, 0);
+  VERIFY_A_OP_B_STR(serial.write_buf, ==, "\r+++\"\rAT\r");
   fake_modem_reply(&serial);
 
   for (int i = 0; i < 15 && serial.write_buf.empty(); ++i) {
-    client->poll();
+    cm->poll();
     delay(10);
   }
   VERIFY_A_OP_B_STR(serial.write_buf, ==, "AT+CGMM\r");
   fake_modem_reply(&serial);
 
-  client->poll();
+  cm->poll();
   VERIFY_A_OP_B_STR(serial.write_buf, ==, "AT+CGMR\r");
   fake_modem_reply(&serial);
 
-  client->poll();
+  cm->poll();
   VERIFY_A_OP_B_STR(serial.write_buf, ==, "AT#XSMVER\r");
   fake_modem_reply(&serial);
 
-  client->poll();
+  cm->poll();
   VERIFY_A_OP_B_STR(serial.write_buf, ==, "AT+CGSN=2\r");
   fake_modem_reply(&serial);
 
-  client->poll();
+  cm->poll();
   VERIFY_A_OP_B_STR(serial.write_buf, ==, "AT%CMNG=1,0,0\r");  // check certs
   fake_modem_reply(&serial);
 
-  client->poll();
+  cm->poll();
   VERIFY_A_OP_B_STR(serial.write_buf, ==, "AT+CMEE=1\r");  // ext. errors on
   fake_modem_reply(&serial);
 
-  client->poll();
+  cm->poll();
   VERIFY_A_OP_B_STR(serial.write_buf, ==, "AT%XPDNCFG=1\r");  // always-on IP
   fake_modem_reply(&serial);
 
-  client->poll();
+  cm->poll();
   VERIFY_A_OP_B_STR(serial.write_buf, ==, "AT+CFUN=1\r");  // radio on
   fake_modem_reply(&serial);
 
-  client->poll();
+  cm->poll();
   VERIFY_A_OP_B_STR(serial.write_buf, ==, "AT+CEREG=1\r");  // reg notify on
   fake_modem_reply(&serial);
 
-  client->poll();
+  cm->poll();
   VERIFY_A_OP_B_STR(serial.write_buf, ==, "AT+CGEREP=1\r");  // data notify on
   fake_modem_reply(&serial);
 
-  client->poll();
+  cm->poll();
   VERIFY_A_OP_B_STR(serial.write_buf, ==, "AT%XMONITOR\r");  // check radio
   fake_modem_reply(&serial);
 
-  client->poll();
+  cm->poll();
   VERIFY_A_OP_B_STR(serial.write_buf, ==, "AT+CGPADDR\r");  // check IP
   fake_modem_reply(&serial);
 
-  client->poll();
+  cm->poll();
   VERIFY_A_OP_B_STR(serial.write_buf, ==, "AT#XMQTTCON?\r");  // check MQTT
   fake_modem_reply(&serial);
 
-  client->poll();
+  cm->poll();
   VERIFY_A_OP_B_STR(serial.write_buf, ==, "AT#XMQTTCON=0\r");  // disconnect
   fake_modem_reply(&serial);
 
-  client->poll();
+  cm->poll();
   VERIFY_A_OP_B_STR(
     serial.write_buf, ==,
     "AT#XMQTTCFG=\"1122222233333344\",60,1\r"  // configure MQTT
   );
   fake_modem_reply(&serial);
 
-  client->poll();
+  cm->poll();
   VERIFY_A_OP_B_STR(
     serial.write_buf, ==,
     "AT#XMQTTCON=1,\"fake-user\",\"fake-pass\",\"fake-server\",8883,0\r"
   );
   fake_modem_reply(&serial);
 
-  client->poll();
+  cm->poll();
   VERIFY_A_OP_B_STR(serial.write_buf, ==, "AT#XMQTTSUB=\"topic1\",0\r");
   fake_modem_reply(&serial);
 
-  client->poll();
+  cm->poll();
   VERIFY_A_OP_B_STR(serial.write_buf, ==, "AT#XMQTTSUB=\"topic2\",0\r");
   fake_modem_reply(&serial);
 
-  client->poll();
+  cm->poll();
   VERIFY_A_OP_B_STR(serial.write_buf, ==, "");  // idle
 
   // Status after initial setup
-  auto const& status = client->poll();
+  auto const& status = cm->poll();
   VERIFY_A_OP_B_STR(status.hardware, ==, "Fake Hardware");
   VERIFY_A_OP_B_STR(status.imeisv, ==, "1122222233333344");
   VERIFY_A_OP_B_STR(status.versions[0], ==, "Fake Revision");
@@ -233,51 +230,68 @@ static void test_modem_client_setup() {
   VERIFY_A_OP_B_INT(status.ip_attached, >, 0);
   VERIFY_A_OP_B_INT(status.ip_addr, ==, 0x0C22384E);
   VERIFY_A_OP_B_INT(status.mqtt_ready, >, 0);
+  VERIFY_A_OP_B_INT(status.mqtt_publish_busy, ==, 0);
+  VERIFY_A_OP_B_INT(status.mqtt_receive_ready, ==, 0);
 }
 
 static void test_mqtt_publish() {
   OK_NOTE("\n#TEST# test_mqtt_publish");
   FakeSerial serial;
-  auto const client = make_cell_modem_client(
-    &serial, MODEM_ENABLE_PIN, fake_mqtt_config(), {}
-  );
-  if (!run_client_setup(client, &serial)) return;
+  auto const cm = make_cell_modem_client(&serial, EN_PIN, mqtt_config(), {});
+  if (!run_client_setup(cm.get(), &serial)) return;
 
-  auto const& st1 = client->poll();
+  auto const& st1 = cm->poll();
   if (!VERIFY_A_OP_B_INT(st1.mqtt_publish_busy, ==, 0)) return;
-  client->publish({.topic = "test-topic", .payload = "test-payload"});
+  cm->publish({.topic = "test-topic", .payload = "test-payload"});
+  VERIFY_A_OP_B_INT(st1.mqtt_publish_busy, >, 0);  // modified in reference
 
-  auto const& st2 = client->poll();
+  auto const& st2 = cm->poll();
   VERIFY_A_OP_B_INT(st2.mqtt_publish_busy, >, 0);
   VERIFY_A_OP_B_STR(
     serial.write_buf, ==, "AT#XMQTTPUB=\"test-topic\",\"\",1,0,12\r"
   );
   fake_modem_reply(&serial);
 
-  auto const& st3 = client->poll();
+  auto const& st3 = cm->poll();
   VERIFY_A_OP_B_INT(st3.mqtt_publish_busy, >, 0);
   VERIFY_A_OP_B_STR(serial.write_buf, ==, "test-payload");
   serial.write_buf.clear();
   serial.read_buf = "#XDATAMODE: 0\r\n";
 
-  auto const& st4 = client->poll();
+  auto const& st4 = cm->poll();
   VERIFY_A_OP_B_INT(st4.mqtt_publish_busy, >, 0);  // after #XDATAMODE: 0
   VERIFY_A_OP_B_STR(serial.write_buf, ==, "");  // idle until PUBACK
   serial.read_buf = "#XMQTTEVT: 3,0\r\n";  // PUBACK
 
-  auto const &st5 = client->poll();
+  auto const &st5 = cm->poll();
   VERIFY_A_OP_B_INT(st5.mqtt_publish_busy, ==, 0);  // after PUBACK
   VERIFY_A_OP_B_STR(serial.write_buf, ==, "");  // continues idle
+}
+
+static void test_mqtt_receive() {
+  OK_NOTE("\n#TEST# test_mqtt_receive");
+  FakeSerial serial;
+  auto const cm = make_cell_modem_client(&serial, EN_PIN, mqtt_config(), {});
+  if (!run_client_setup(cm.get(), &serial)) return;
+
+  serial.read_buf = "#XMQTTMSG: 10,13\r\ntest/topic\r\nHello, World!\r\n";
+  auto const &st1 = cm->poll();
+  VERIFY_A_OP_B_STR(serial.write_buf, ==, "");  // still idle
+  VERIFY_A_OP_B_INT(st1.mqtt_receive_ready, >, 0);
+  auto const& m1 = cm->receive();
+  VERIFY_A_OP_B_STR(m1.topic, ==, "test/topic");
+  VERIFY_A_OP_B_STR(m1.payload, ==, "Hello, World!");
 }
 
 void setup() {
   Serial1.begin(115200);
   ok_logging_stream = &Serial1;
-  pinMode(MODEM_ENABLE_PIN, INPUT_PULLUP);
+  pinMode(EN_PIN, INPUT_PULLUP);
   OK_NOTE("#BEGIN-TESTS#");
   test_blub_cert_sha256();
   test_modem_client_setup();
   test_mqtt_publish();
+  test_mqtt_receive();
   OK_NOTE("#END-TESTS#");
 }
 
