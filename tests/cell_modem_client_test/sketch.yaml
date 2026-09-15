@@ -10,6 +10,5 @@ profiles:
       - dir: ../../cell_modem_client_lib
       - dir: ../../config_lib
       - dir: ../test_lib
-      - Crypto (0.4.0)
       - Embedded Template Library ETL (20.48.1)
       - OK Logging (0.5)
