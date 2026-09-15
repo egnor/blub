@@ -22,8 +22,10 @@ static steady_clock::time_point last_loop_time = {};
 static steady_clock::time_point next_print_time = {};
 static steady_clock::time_point next_publish_time = {};
 
-int counter;
-etl::string<256> message;
+int counter = 0;
+int pub_which = 0;
+etl::string<256> pub_buffer;
+etl::string<256> sub_recent;
 
 void loop() {
   auto const loop_time = steady_clock::now();
@@ -100,13 +102,21 @@ void loop() {
       message.topic.size(), message.topic.data(),
       message.payload.size(), message.payload.data()
     );
+    sub_recent = message.payload;
   }
 
   if (loop_time > next_publish_time &&
       status.mqtt_ready && !status.mqtt_publish_busy) {
     next_publish_time = loop_time + 1_s;
-    etl::format_to(message, "Hello from BLUB cell_bench: {}", counter++);
-    cell_modem->publish({"cell_bench/pub", message});
+    if (pub_which == 0) {
+      etl::format_to(pub_buffer, "Hello from BLUB cell_bench: {}", counter++);
+      cell_modem->publish({"cell_bench/pub", pub_buffer});
+      ++pub_which;
+    } else if (pub_which == 1) {
+      etl::format_to(pub_buffer, "Most recent cell_bench/sub: {}", sub_recent);
+      cell_modem->publish({"cell_bench/echo", pub_buffer});
+      pub_which = 0;
+    }
   }
 
   last_loop_time = loop_time;
