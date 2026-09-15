@@ -1,2 +1,2 @@
-def test_config_lib(emulated_test_output):
-    pass
+async def test_config_lib(run_emulator):
+    await run_emulator()

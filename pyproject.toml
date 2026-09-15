@@ -25,7 +25,7 @@ dependencies = [
 
 [tool.pytest]
 addopts = ["--import-mode=importlib"]
-# filterwarnings = ["ignore:record_xml_attribute .* experimental"]
+asyncio_mode = "auto"
 testpaths = ["tests"]
 
 [tool.ruff]
