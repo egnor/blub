@@ -52,6 +52,8 @@ void loop() {
     );
   }
 
+  ok_dock_layout->line_printf(2, "\f9[%s]", sub_recent.c_str());
+
   if (loop_time > next_print_time) {
     next_print_time = loop_time + 1_s;
     if (status.hardware.empty()) {
@@ -74,19 +76,19 @@ void loop() {
       OK_NOTE("🔎 searching...");
     } else {
       OK_NOTE(
-        "%s op:%d-%d cell:%04x-%08x-%d",
-        status.roaming ? "🌎 roam" : "🏠️ home", status.op_mcc, status.op_mnc,
+        "📶 %s op:%d-%d cell:%04x-%08x-%d",
+        status.roaming ? "roam" : "home", status.op_mcc, status.op_mnc,
         status.cell_tac, status.cell_id, status.cell_phys_id
       );
       OK_NOTE(
-        "📶 tech:%d band:%d-%d signal:%ddB snr:%ddB",
+        "   tech:%d band:%d-%d signal:%ddB snr:%ddB",
         status.radio_tech, status.radio_band, status.radio_earfcn,
         status.radio_rsrp, status.radio_snr
       );
     }
     if (status.ip_attached) {
       OK_NOTE(
-        "🌐 IP: %d.%d.%d.%d %s", ip[0], ip[1], ip[2], ip[3],
+        "   IP: %d.%d.%d.%d %s", ip[0], ip[1], ip[2], ip[3],
         status.mqtt_publish_busy ? "💬 MQTT busy" :
         status.mqtt_ready ? "🗨️ MQTT ready" : "⛓️‍💥 MQTT unready"
       );

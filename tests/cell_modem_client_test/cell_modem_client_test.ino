@@ -160,7 +160,6 @@ static void test_modem_client_setup() {
   expect(cm, &serial, "AT#XSMVER\r");
   expect(cm, &serial, "AT+CGSN=2\r");
   expect(cm, &serial, "AT%CMNG=1,0,0\r");
-  expect(cm, &serial, "AT+CMEE=1\r");  // ext. errors on
   expect(cm, &serial, "AT%XPDNCFG=1\r");  // always-on IP
   expect(cm, &serial, "AT+CFUN=1\r");  // radio on
   expect(cm, &serial, "AT+CEREG=1\r");  // reg notify on
@@ -242,7 +241,6 @@ static void test_cert_rewrite() {
 
   // Still wrong after the rewrite (empty slot): give up, don't loop on NVM
   expect(cm, &serial, "AT%CMNG=1,0,0\r");
-  expect(cm, &serial, "AT+CMEE=1\r");  // continues with setup
   expect(cm, &serial, "AT%XPDNCFG=1\r");
   expect(cm, &serial, "AT+CFUN=1\r");
 }
