@@ -90,11 +90,17 @@ void loop() {
       OK_NOTE(
         "   IP: %d.%d.%d.%d %s", ip[0], ip[1], ip[2], ip[3],
         status.mqtt_publish_busy ? "💬 MQTT busy" :
-        status.mqtt_ready ? "🗨️ MQTT ready" : "⛓️‍💥 MQTT unready"
+        status.mqtt_ready ? "🗨️ MQTT ready" : "🗯️ MQTT unready"
       );
     } else {
       OK_NOTE("⭕ No IP attached");
     }
+    OK_NOTE(
+      "🚩 resets=(%dha %dra %dmq) errors=(%dap %dse %dti %dmo %dmq)",
+      status.hard_resets, status.radio_resets, status.mqtt_resets,
+      status.app_errors, status.serial_errors, status.timeout_errors,
+      status.modem_errors, status.mqtt_errors
+    );
   }
 
   if (status.mqtt_receive_ready) {
@@ -109,13 +115,19 @@ void loop() {
 
   if (loop_time > next_publish_time &&
       status.mqtt_ready && !status.mqtt_publish_busy) {
-    next_publish_time = loop_time + 1_s;
+    next_publish_time = loop_time + 500_ms;
     if (pub_which == 0) {
-      etl::format_to(pub_buffer, "Hello from BLUB cell_bench: {}", counter++);
+      etl::format_to(
+        pub_buffer,
+        "Hello #{}! resets=({}ha {}ra {}mq) errors=({}ap {}se {}te {}mo {}mq)",
+        counter++, status.hard_resets, status.radio_resets, status.mqtt_resets,
+        status.app_errors, status.serial_errors, status.timeout_errors,
+        status.modem_errors, status.mqtt_errors
+      );
       cell_modem->publish({"cell_bench/pub", pub_buffer});
       ++pub_which;
     } else if (pub_which == 1) {
-      etl::format_to(pub_buffer, "Most recent cell_bench/sub: {}", sub_recent);
+      etl::format_to(pub_buffer, "[{}]", sub_recent);
       cell_modem->publish({"cell_bench/echo", pub_buffer});
       pub_which = 0;
     }
