@@ -224,7 +224,7 @@ static void test_cert_rewrite() {
   expect(cm, &serial, "AT#XSMVER\r");
   expect(cm, &serial, "AT+CGSN=2\r");
 
-  // Mismatched cert: radio off, erase, write, re-check
+  // Mismatched cert: radio off, erase, write
   expect(cm, &serial, "AT%CMNG=1,0,0\r");
   serial.read_buf = "%CMNG: 0,0,\"Wrong Hash\"\r\nOK\r\n";
   expect(cm, &serial, "AT+CFUN=4\r");
@@ -240,7 +240,6 @@ static void test_cert_rewrite() {
   serial.read_buf = "OK\r\n";
 
   // Still wrong after the rewrite (empty slot): give up, don't loop on NVM
-  expect(cm, &serial, "AT%CMNG=1,0,0\r");
   expect(cm, &serial, "AT%XPDNCFG=1\r");
   expect(cm, &serial, "AT+CFUN=1\r");
 }
@@ -309,7 +308,6 @@ static void test_mqtt_publish_data_failed() {
   VERIFY_TRUE(!st1.mqtt_publish_busy);  // dropped
   VERIFY_TRUE(!st1.mqtt_ready);  // reconnecting
   expect(cm, &serial, "AT#XMQTTCON=0\r");
-  expect(cm, &serial, "AT#XMQTTCFG=\"1122222233333344\",60,1\r");
 
   fake_log.clear();
   auto const ready = [](CellModemStatus const& s) { return s.mqtt_ready; };
@@ -438,7 +436,6 @@ static void test_mqtt_disconnect_event() {
   expect(cm, &serial, "AT#XMQTTCON?\r");
   auto const& st1 = cm->poll();
   VERIFY_TRUE(!st1.mqtt_ready);
-  expect(cm, &serial, "AT#XMQTTCFG=\"1122222233333344\",60,1\r");
 
   fake_log.clear();
   auto const ready = [](CellModemStatus const& s) { return s.mqtt_ready; };
