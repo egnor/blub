@@ -244,6 +244,54 @@ static void test_cert_rewrite() {
   expect(cm, &serial, "AT+CFUN=1\r");
 }
 
+static void test_command_timeout() {
+  OK_NOTE("\n#TEST# test_command_timeout");
+  FakeSerial serial;
+  auto const cm = make_cell_modem_client(&serial, EN_PIN, mqtt_config(), {});
+
+  // Unanswered command: probe the modem again, then restart setup
+  expect(cm, &serial, "\r+++\"\rAT\r");
+  expect(cm, &serial, "AT+CGMM\r");
+  serial.read_buf = "";  // no reply
+  expect(cm, &serial, "\r+++\"\rAT\r", 11000);  // after 10s timeout
+  expect(cm, &serial, "AT+CGMM\r");
+  expect(cm, &serial, "AT+CGMR\r");
+  serial.read_buf = "";  // no reply
+
+  // Repeatedly unanswered probes: keeps trying (with faster timeout)
+  expect(cm, &serial, "\r+++\"\rAT\r", 11000);  // after 10s timeout
+  serial.read_buf = "";  // no reply
+  expect(cm, &serial, "\r+++\"\rAT\r", 11000);  // after 10s timeout timeout
+  serial.read_buf = "";  // no reply
+}
+
+static void test_modem_restart() {
+  OK_NOTE("\n#TEST# test_modem_restart");
+  FakeSerial serial;
+  auto const cm = make_cell_modem_client(&serial, EN_PIN, mqtt_config(), {});
+  if (!run_until_ready(cm, &serial)) return;
+
+  // Unexpected "Ready": the modem rebooted, everything is invalid
+  serial.read_buf = "\xffReady\r\n";
+  fake_connected = false;
+  auto const& st1 = cm->poll();
+  VERIFY_TRUE(!st1.running);
+  VERIFY_TRUE(!st1.ip_attached);
+  VERIFY_TRUE(!st1.mqtt_ready);
+  VERIFY_TRUE(st1.failed);
+
+  // Probe, then full setup, then reconnect
+  fake_log.clear();
+  expect(cm, &serial, "\r+++\"\rAT\r");
+  expect(cm, &serial, "AT+CGMM\r");
+  auto const ready = [](CellModemStatus const& s) { return s.mqtt_ready; };
+  run_until(cm, &serial, 60000, ready);
+  VERIFY_A_OP_B_INT(fake_log.find("AT+CFUN=1"), !=, etl::istring::npos);
+  VERIFY_A_OP_B_INT(fake_log.find("AT#XMQTTCON=0"), ==, etl::istring::npos);
+  VERIFY_A_OP_B_INT(fake_log.find("AT#XMQTTCON=1"), !=, etl::istring::npos);
+  VERIFY_TRUE(!cm->poll().failed);
+}
+
 static void test_mqtt_publish() {
   OK_NOTE("\n#TEST# test_mqtt_publish");
   FakeSerial serial;
@@ -373,56 +421,6 @@ static void test_mqtt_receive_oversize() {
   VERIFY_TRUE(run_until(cm, &serial, 1000, reset));
 }
 
-static void test_command_timeout() {
-  OK_NOTE("\n#TEST# test_command_timeout");
-  FakeSerial serial;
-  auto const cm = make_cell_modem_client(&serial, EN_PIN, mqtt_config(), {});
-
-  // Unanswered command: probe the modem again, then restart setup
-  expect(cm, &serial, "\r+++\"\rAT\r");
-  expect(cm, &serial, "AT+CGMM\r");
-  serial.read_buf = "";  // no reply
-  expect(cm, &serial, "\r+++\"\rAT\r", 6000);  // after 5s timeout
-  expect(cm, &serial, "AT+CGMM\r");
-  expect(cm, &serial, "AT+CGMR\r");
-  serial.read_buf = "";  // no reply
-
-  // Repeatedly unanswered probes: just keeps trying
-  expect(cm, &serial, "\r+++\"\rAT\r", 6000);  // after 5s timeout
-  serial.read_buf = "";  // no reply
-  expect(cm, &serial, "\r+++\"\rAT\r", 6000);  // after 5s timeout
-  serial.read_buf = "";  // no reply
-  expect(cm, &serial, "\r+++\"\rAT\r", 6000);  // after 5s timeout
-  serial.read_buf = "";  // no reply
-}
-
-static void test_modem_restart() {
-  OK_NOTE("\n#TEST# test_modem_restart");
-  FakeSerial serial;
-  auto const cm = make_cell_modem_client(&serial, EN_PIN, mqtt_config(), {});
-  if (!run_until_ready(cm, &serial)) return;
-
-  // Unexpected "Ready": the modem rebooted, everything is invalid
-  serial.read_buf = "\xffReady\r\n";
-  fake_connected = false;
-  auto const& st1 = cm->poll();
-  VERIFY_TRUE(!st1.running);
-  VERIFY_TRUE(!st1.ip_attached);
-  VERIFY_TRUE(!st1.mqtt_ready);
-  VERIFY_TRUE(st1.failed);
-
-  // Probe, then full setup, then reconnect
-  fake_log.clear();
-  expect(cm, &serial, "\r+++\"\rAT\r");
-  expect(cm, &serial, "AT+CGMM\r");
-  auto const ready = [](CellModemStatus const& s) { return s.mqtt_ready; };
-  run_until(cm, &serial, 60000, ready);
-  VERIFY_A_OP_B_INT(fake_log.find("AT+CFUN=1"), !=, etl::istring::npos);
-  VERIFY_A_OP_B_INT(fake_log.find("AT#XMQTTCON=0"), ==, etl::istring::npos);
-  VERIFY_A_OP_B_INT(fake_log.find("AT#XMQTTCON=1"), !=, etl::istring::npos);
-  VERIFY_TRUE(!cm->poll().failed);
-}
-
 static void test_mqtt_disconnect_event() {
   OK_NOTE("\n#TEST# test_mqtt_disconnect_event");
   FakeSerial serial;
@@ -451,13 +449,13 @@ void setup() {
   OK_NOTE("#BEGIN-TESTS#");
   test_modem_client_setup();
   test_cert_rewrite();
+  test_command_timeout();
+  test_modem_restart();
   test_mqtt_publish();
   test_mqtt_publish_rejected();
   test_mqtt_publish_data_failed();
   test_mqtt_receive();
   test_mqtt_receive_oversize();
-  test_command_timeout();
-  test_modem_restart();
   test_mqtt_disconnect_event();
   OK_NOTE("#END-TESTS#");
 }

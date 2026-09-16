@@ -71,7 +71,7 @@ class CellModemClientDef : public CellModemClient {
       }
       pinMode(enable_pin, OUTPUT);
       digitalWrite(enable_pin, LOW);
-      last_serial_traffic = poll_time;
+      last_step = poll_time;  // start reset timer now
       state = State::RESET_TIME;
     }
 
@@ -85,7 +85,6 @@ class CellModemClientDef : public CellModemClient {
     }
 
     for (int av = 0; av || ((av = serial->available()) > 0); --av) {
-      last_serial_traffic = poll_time;
       int const ch = serial->read();
       if (ch < 0) {
         OK_ERROR("Serial read error: avail=%d ch=%d", av, ch);
@@ -122,24 +121,12 @@ class CellModemClientDef : public CellModemClient {
     // State timeouts
     //
 
-    auto const quiet = poll_time - last_serial_traffic;
-    if (in_counted_todo > 0) {
-      if (quiet > 60_s) {
-        OK_ERROR("Data timeout: %.1fs > 60s", raw_count<secd>(quiet));
-        ++status.timeout_errors;
-        in_counted_todo = -1;
-        in_buf.clear();
-        state = State::READY;  // any pending command was surely lost
-        out_todo.clear();  // cancel remainder of sequence
-        do_probe = true;  // check on the modem and poll everything
-      }
-    } else {
-      auto const allow =
-        (state == State::READY) ? 30000_ms :
+    if (state != State::READY) {
+      auto const elapsed = poll_time - last_step;
+      auto const allowed =
         (state == State::RESET_TIME || state == State::PROBE_DRAIN) ? 100_ms :
-        (state == State::AT_XMQTTCON_WAIT) ? 60000_ms : 5000_ms;
-      if (quiet > allow) {
-        last_serial_traffic = poll_time;  // reset timer
+        (state == State::AT_XMQTTCON_WAIT) ? 60000_ms : 10000_ms;
+      if (elapsed > allowed) {
         out_todo.clear();  // cancel remainder of sequence
         switch (state) {
           case State::READY:
@@ -289,17 +276,20 @@ class CellModemClientDef : public CellModemClient {
     while (state == State::READY && !out_todo.empty()) {
       auto* const step = &out_todo.front();
       if (!step->logged) {
-        OK_DETAIL("▶️ %s ▶%d", abbr(step->send).c_str(), step->next_state);
+        OK_DETAIL(
+          "▶️ (%db) %s ▶%d",
+          step->send.size(), abbr(step->send).c_str(), step->next_state
+        );
         step->logged = true;
       }
       for (int av = 0; av || ((av = serial->availableForWrite()) > 0); --av) {
         if (step->send.empty()) break;
         serial->write(step->send.front());
         step->send.remove_prefix(1);
-        last_serial_traffic = poll_time;
       }
       if (!step->send.empty()) break;
       state = step->next_state;
+      last_step = poll_time;
       out_todo.pop();
     }
 
@@ -395,7 +385,7 @@ class CellModemClientDef : public CellModemClient {
 
   State state = State::READY;
   steady_clock::time_point poll_time = {};
-  steady_clock::time_point last_serial_traffic = {};
+  steady_clock::time_point last_step = {};
   steady_clock::time_point next_periodic = {};
   steady_clock::time_point next_mqtt_reset = {};
   steady_clock::time_point next_soft_reset = {};
@@ -824,6 +814,7 @@ class CellModemClientDef : public CellModemClient {
           state = State::READY;
           break;
         case State::PROBE_WAIT:
+          last_step = poll_time;  // start the PROBE_DRAIN timer now
           state = State::PROBE_DRAIN;
           break;
       }
