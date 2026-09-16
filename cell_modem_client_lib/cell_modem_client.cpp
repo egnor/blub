@@ -244,7 +244,6 @@ class CellModemClientDef : public CellModemClient {
         etl::to_string(mqtt_server.port, out_scratch);
         out_bufs.push(out_scratch);
         out_bufs.push(mqtt_server.cert.empty() ? "\r" : ",0\r");
-        out_secret = true;  // don't log the password
         state = State::AT_XMQTTCON_WAIT;
         mqtt_state = MqttState::CONNACK_WAIT;
         mqtt_backoff = poll_time + 30_s;  // rate-limit reconnection attempts
@@ -268,11 +267,7 @@ class CellModemClientDef : public CellModemClient {
       }
 
       if (!out_bufs.empty()) {
-        if (out_secret) {
-          OK_DETAIL("▶️ %s[...]", abbr(out_bufs.front()).c_str());
-        } else {
-          OK_DETAIL("▶️ %s", abbr(out_bufs).c_str());
-        }
+        OK_DETAIL("▶️ %s", abbr(out_bufs).c_str());
       }
     }
 
@@ -287,7 +282,6 @@ class CellModemClientDef : public CellModemClient {
       if (!buf->empty()) break;
       out_bufs.pop();
     }
-    if (out_bufs.empty()) out_secret = false;
 
     if (mqtt_state < MqttState::READY && !mqtt_outgoing.topic.empty()) {
       OK_ERROR("MQTT publish lost: %s", abbr(mqtt_outgoing.topic).c_str());
@@ -404,7 +398,6 @@ class CellModemClientDef : public CellModemClient {
 
   etl::circular_buffer<etl::string_view, 16> out_bufs;
   etl::string<10> out_scratch;
-  bool out_secret = false;
 
   CertState cert_state = CertState::UNKNOWN;
   MqttState mqtt_state = MqttState::OK_TO_DISCONNECT;
