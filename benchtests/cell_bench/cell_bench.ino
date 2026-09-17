@@ -115,11 +115,7 @@ void loop() {
   }
 
   if (status.mqtt_ready && !status.mqtt_publish_busy) {
-    if (needs_echo) {
-      needs_echo = false;
-      etl::format_to(pub_buffer, "[{}]", sub_recent);
-      cell_modem->publish({"cell_bench/echo", pub_buffer});
-    } else if (loop_time > next_publish_time) {
+    if (loop_time > next_publish_time) {
       next_publish_time = loop_time + 1_s;
       etl::format_to(
         pub_buffer,
@@ -129,6 +125,10 @@ void loop() {
         status.modem_errors, status.mqtt_errors
       );
       cell_modem->publish({"cell_bench/pub", pub_buffer});
+    } else if (needs_echo) {
+      needs_echo = false;
+      etl::format_to(pub_buffer, "[{}]", sub_recent);
+      cell_modem->publish({"cell_bench/echo", pub_buffer});
     }
   }
 
