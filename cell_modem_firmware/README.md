@@ -147,8 +147,8 @@ The firmware builds with Nordic's standard serial modem sysbuild setup:
   (NSIB aka B0) + [MCUboot](https://docs.mcuboot.com/) bootloaders
 - NSIB provisioning data (key hashes etc.) in the nRF91 UICR at `0xFF8000`
 
-Upstream ncs-serial-modem only knows Nordic's own boards, so
-`feather_nrf9151/` supplies board-specific configuration and our preferences:
+Upstream ncs-serial-modem only knows Nordic's own boards, so `sysbuild/`
+includes board-specific configuration and our preferences:
 
 - `partitions.dtsi` - flash layout for B0 + updatable MCUboot + TF-M
   (same as Nordic's nRF9151 DK layout; the nfed board default differs),
@@ -161,10 +161,9 @@ Upstream ncs-serial-modem only knows Nordic's own boards, so
   unneeded board drivers off
 - `b0.conf`, `b0.overlay` - NSIB: likewise, plus workarounds (see below)
 
-`sysbuild/CMakeLists.txt` attaches these to the right images (as
-`EXTRA_CONF_FILE` / `EXTRA_DTC_OVERLAY_FILE`) whenever the board is the
-Feather. These files originated in [Circuit Dojo's fork][fork] of
-ncs-serial-modem, which we previously built from.
+These files are attached to the build by `sysbuild/CMakeLists.txt` via
+`..._EXTRA_CONF_FILE` / `..._EXTRA_DTC_OVERLAY_FILE` CMake cache variables.
+These files originated in [Circuit Dojo's fork][fork] of ncs-serial-modem.
 
 [fork]: https://github.com/circuitdojo/ncs-serial-modem
 

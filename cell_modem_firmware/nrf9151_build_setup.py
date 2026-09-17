@@ -4,9 +4,10 @@
 building Nordic Serial Modem firmware for the Circuit Dojo nRF9151 Feather.
 See README.md next to this script for everyday usage.
 
-This directory is linked into the west workspace as the "manifest repository"
-(see west.yml, which pins ncs-serial-modem and the board definitions) and is
-also a Zephyr module (see zephyr/module.yml) that adds Feather overlays.
+This directory is linked into the workspace as the "manifest repository"
+(see west.yml) which pins dependencies, and is also a Zephyr module
+(see zephyr/module.yml) with a sysbuild extension (sysbuild/CMakeFiles.txt)
+that adds board-specific config overrides.
 """
 
 import argparse
