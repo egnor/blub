@@ -6,6 +6,7 @@ python = "3.12"
 uv = "0.12"
 "github:circuitdojo/modem_updater" = { bin = "modem_updater", version = "0.1.5" }
 "github:probe-rs/probe-rs" = { matching = "probe-rs-tools", version = "0.32" }
+"github:EdJoPaTo/mqttui" = "0.24.0"
 "pipx:grip" = "4.6"
 
 [tools."http:nrfutil"]
@@ -32,6 +33,11 @@ ARDUINO_LIBRARY_ENABLE_UNSAFE_INSTALL = "true"
 _.path = { path = "{{config_root}}/dev.tmp/nordic/bin" }
 NRFUTIL_HOME = "{{config_root}}/dev.tmp/nordic"
 PROBE_RS_CHIP = "nRF9151_xxAA"
+
+# mqttui command-line MQTT browser
+MQTTUI_BROKER = "mqtts://mqtt.eacs.io"
+MQTTUI_USERNAME = "blub"
+MQTTUI_PASSWORD = "blub"
 
 [hooks]
 postinstall = """
