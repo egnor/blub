@@ -44,7 +44,7 @@ struct CellModemStatus {
 
   // stats counters
   int hard_resets = 0, radio_resets = 0, mqtt_resets = 0;
-  int app_errors = 0, serial_errors = 0, timeout_errors = 0;
+  int usage_errors = 0, serial_errors = 0, timeout_errors = 0;
   int modem_errors = 0, mqtt_errors = 0;
 };
 

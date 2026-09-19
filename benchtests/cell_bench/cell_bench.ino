@@ -35,8 +35,9 @@ void loop() {
   }
 
   auto const status = cell_modem->poll();
-
   uint8_t ip[4] = { 0, 0, 0, 0 };
+  for (int i = 0; i < 4; ++i) ip[i] = status.ip_addr >> (8 * (3 - i));
+
   if (!status.running) {
     ok_dock_layout->line_printf(1, "\f9Radio Off");
   } else if (status.failed) {
@@ -46,7 +47,6 @@ void loop() {
   } else if (!status.ip_attached) {
     ok_dock_layout->line_printf(1, "\f9No IP");
   } else {
-    for (int i = 0; i < 4; ++i) ip[i] = status.ip_addr >> (8 * (3 - i));
     ok_dock_layout->line_printf(
       1, "\f9%d.%d.%d.%d", ip[0], ip[1], ip[2], ip[3]
     );
@@ -96,9 +96,9 @@ void loop() {
       OK_NOTE("⭕ No IP attached");
     }
     OK_NOTE(
-      "🚩 resets=(%dha %dra %dmq) errors=(%dap %dse %dti %dmo %dmq)",
+      "🚩 resets=(%dha %dra %dmq) errors=(%dus %dse %dti %dmo %dmq)",
       status.hard_resets, status.radio_resets, status.mqtt_resets,
-      status.app_errors, status.serial_errors, status.timeout_errors,
+      status.usage_errors, status.serial_errors, status.timeout_errors,
       status.modem_errors, status.mqtt_errors
     );
   }
@@ -119,9 +119,9 @@ void loop() {
       next_publish_time = loop_time + 1_s;
       etl::format_to(
         pub_buffer,
-        "Hello #{}! resets=({}ha {}ra {}mq) errors=({}ap {}se {}te {}mo {}mq)",
+        "Hello #{}! resets=({}ha {}ra {}mq) errors=({}us {}se {}te {}mo {}mq)",
         counter++, status.hard_resets, status.radio_resets, status.mqtt_resets,
-        status.app_errors, status.serial_errors, status.timeout_errors,
+        status.usage_errors, status.serial_errors, status.timeout_errors,
         status.modem_errors, status.mqtt_errors
       );
       cell_modem->publish({"cell_bench/pub", pub_buffer});

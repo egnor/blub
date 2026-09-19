@@ -9,8 +9,10 @@ profiles:
     libraries:
       - Embedded Template Library ETL (20.48.1)
       - Everyday Pixel Fonts (0.1)
-      - OK Logging (0.5)
-      - OK Little Layout (0.3)
+      # - OK Logging (0.8)
+      - dir: ../../../ok_arduino_logging
+      # - OK Little Layout (0.3)
+      - dir: ../../../ok_arduino_little_layout
       - OK Micro Dock (0.3)
       - U8g2 (2.36.19)
       - dir: ../../cell_modem_client_lib

@@ -12,4 +12,5 @@ profiles:
       - dir: ../test_lib
       - Crypto (0.4.0)
       - Embedded Template Library ETL (20.48.1)
-      - OK Logging (0.5)
+      # - OK Logging (0.8)
+      - dir: ../../../ok_arduino_logging
