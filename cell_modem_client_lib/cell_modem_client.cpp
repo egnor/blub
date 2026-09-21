@@ -158,7 +158,7 @@ class CellModemClientDef : public CellModemClient {
             break;
           case State::PROBE_DRAIN:
             OK_DETAIL("✅️ Modem probe complete");
-            next_radio_reset = poll_time + 60_s;  // give the radio a chance
+            next_radio_reset = poll_time + 300_s;  // give the radio a chance
             next_periodic = {};  // poll everything right away
             state = State::READY;
             do_get_version = do_setup_radio = true;  // setup all the things

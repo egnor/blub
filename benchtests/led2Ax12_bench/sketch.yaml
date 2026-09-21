@@ -9,5 +9,5 @@ profiles:
     libraries:
       - Adafruit BusIO (1.17.2)
       - Adafruit PWM Servo Driver Library (3.0.2)
-      - OK Arduino Logging (0.1)
+      - OK Logging (0.8)
       - U8g2 (2.36.19)

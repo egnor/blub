@@ -7,7 +7,7 @@ profiles:
       - platform: rp2040:rp2040 (6.0.0)
         platform_index_url: https://github.com/earlephilhower/arduino-pico/releases/download/global/package_rp2040_index.json
     libraries:
-      - OK Arduino Logging (0.1)
+      - OK Logging (0.8)
       - Adafruit ADS1X15 (2.5.0)
       - Adafruit BusIO (1.17.2)
       - U8g2 (2.36.19)

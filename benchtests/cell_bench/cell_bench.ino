@@ -52,7 +52,7 @@ void loop() {
     );
   }
 
-  ok_dock_layout->line_printf(2, "\f9[%s]", sub_recent.c_str());
+  ok_dock_layout->line_printf(2, "\f7%s", sub_recent.c_str());
 
   if (loop_time > next_print_time) {
     next_print_time = loop_time + 1_s;

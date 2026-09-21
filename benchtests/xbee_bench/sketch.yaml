@@ -8,6 +8,6 @@ profiles:
         platform_index_url: https://github.com/earlephilhower/arduino-pico/releases/download/global/package_rp2040_index.json
     libraries:
       - Everyday Pixel Fonts (0.1)
-      - OK Logging (0.5)
-      - OK Little Layout (0.3)
+      - OK Logging (0.8)
+      - OK Little Layout (0.4)
       - U8g2 (2.36.19)
