@@ -1,7 +1,6 @@
 #include <Arduino.h>
 #include <etl/chrono.h>
 #include <etl/format.h>
-#include <etl/vector.h>
 #include <ok_logging.h>
 #include <ok_little_layout.h>
 #include <ok_micro_dock.h>
@@ -35,7 +34,7 @@ void loop() {
   }
 
   auto const status = cell_modem->poll();
-  uint8_t ip[4] = { 0, 0, 0, 0 };
+  uint8_t ip[4];
   for (int i = 0; i < 4; ++i) ip[i] = status.ip_addr >> (8 * (3 - i));
 
   if (!status.running) {

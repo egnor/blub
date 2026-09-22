@@ -52,14 +52,14 @@ class CellModemClient {
  public:
   virtual ~CellModemClient() = default;
 
-  // Call frequently (every few ms); the reference stays valid
-  virtual CellModemStatus const& poll() = 0;
+  // Call frequently (every few ms); the pointer stays valid
+  virtual CellModemStatus const* poll() = 0;
 
-  // Requires poll().mqtt_ready && !poll().mqtt_publish_busy; string views
-  // must remain valid until poll().mqtt_publish_busy is false again.
+  // Requires poll()->mqtt_ready && !poll()->mqtt_publish_busy; string views
+  // must remain valid until poll()->mqtt_publish_busy is false again.
   virtual void publish(MqttMessage) = 0;
 
-  // Requires poll().mqtt_receive_ready; views are valid until the next poll().
+  // Requires poll()->mqtt_receive_ready; views are valid until the next poll().
   virtual MqttMessage receive() = 0;
 };
 

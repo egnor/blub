@@ -9,9 +9,12 @@ profiles:
     libraries:
       - Adafruit BusIO (1.16.0)
       - Adafruit INA228 Library (1.0.0)
-      - ArduinoJson (7.0.4)
-      - CircularBuffer (1.4.0)
+      - ArduinoJson (7.4.3)
+      - Embedded Template Library ETL (20.48.1)
       - Everyday Pixel Fonts (0.1)
-      - OK Arduino Logging (0.1)
-      - OK Little Layout (0.1)
-      - U8g2 (2.34.22)
+      - OK Logging (0.8)
+      - OK Little Layout (0.4)
+      - OK Micro Dock (0.3)
+      - U8g2 (2.36.19)
+      - dir: ../cell_modem_client_lib
+      - dir: ../config_lib

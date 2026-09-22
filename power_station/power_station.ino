@@ -1,178 +1,104 @@
-#include <array>
-#include <cmath>
-#include <optional>
-
 #include <Arduino.h>
 #include <ArduinoJson.h>
 #include <Adafruit_INA228.h>
+#include <cmath>
+#include <etl/array.h>
+#include <etl/chrono.h>
+#include <etl/optional.h>
+#include <etl/string.h>
 #include <ok_little_layout.h>
 #include <ok_logging.h>
+#include <ok_micro_dock.h>
 
-#include "src/blub_station.h"
-#include "src/xbee_api.h"
-#include "src/xbee_mqtt_adapter.h"
-#include "src/xbee_radio.h"
-#include "src/xbee_socket_keeper.h"
-#include "src/xbee_status_monitor.h"
+#include <blub_clock_util.h>
+#include <blub_mqtt_config.h>
+#include <cell_modem_client.h>
+
+using namespace etl::chrono;
+using namespace etl::chrono_literals;
 
 static const OkLoggingContext OK_CONTEXT("power_station");
 
-static XBeeStatusMonitor* xbee_monitor = nullptr;
-static XBeeSocketKeeper* socket_keeper = nullptr;
-static XBeeMQTTAdapter* mqtt = nullptr;
-
-static long next_mqtt_millis = 0;
-static long next_screen_millis = 0;
-
 struct meter {
   int i2c_address;
-  char const* name;
-  std::optional<Adafruit_INA228> driver;
+  etl::string_view name;
+  etl::optional<Adafruit_INA228> driver;
 };
 
-std::array<meter, 3> meters{{
-  {INA228_I2CADDR_DEFAULT, "Load"},
+static etl::array<meter, 4> meters{{
+  {INA228_I2CADDR_DEFAULT, "Out"},
   {INA228_I2CADDR_DEFAULT + 1, "PPT"},
   {INA228_I2CADDR_DEFAULT + 4, "Panel"},
+  {INA228_I2CADDR_DEFAULT + 5, "Local"},
 }};
 
-static void on_mqtt_incoming(mqtt_response_publish const& message) {
-  OK_NOTE("MQTT incoming: %.*s", message.topic_name_size, message.topic_name);
-}
+static etl::unique_ptr<CellModemClient> cell_modem;
+static CellModemStatus const* cell_status = nullptr;
+static etl::string<512> pub_buffer;
 
-static void poll_xbee() {
-  static XBeeAPI::Frame in, out;
-  while (xbee_radio->poll_for_frame(&in)) {
-    xbee_monitor->on_incoming(in);
-    socket_keeper->on_incoming(in);
-    if (mqtt->incoming_to_outgoing(in, xbee_radio->outgoing_space(), &out))
-      xbee_radio->add_outgoing(out);
-  }
-
-  in.clear();
-  while (mqtt->incoming_to_outgoing(in, xbee_radio->outgoing_space(), &out))
-    xbee_radio->add_outgoing(out);
-  while (xbee_monitor->maybe_make_outgoing(xbee_radio->outgoing_space(), &out))
-    xbee_radio->add_outgoing(out);
-  while (socket_keeper->maybe_make_outgoing(xbee_radio->outgoing_space(), &out))
-    xbee_radio->add_outgoing(out);
-
-  if (socket_keeper->socket() != mqtt->active_socket()) {
-    mqtt->use_socket(socket_keeper->socket());
-    mqtt_connect(
-        mqtt->client(), "BLUB Power Station",
-        nullptr, nullptr, 0,
-        "blub", "blub",
-        MQTT_CONNECT_CLEAN_SESSION, 400);
-  }
-
-  if (mqtt->active_socket() >= 0 && mqtt->client()->error != MQTT_OK) {
-    OK_ERROR("MQTT error: %s", mqtt_error_str(mqtt->client()->error));
-    socket_keeper->reconnect();
-  }
-
-  if ((millis() - mqtt->last_receive_millis()) > 10 * 60 * 1000) {
-    OK_ERROR("No MQTT data for 10 minutes, rebooting");
-    status_layout->line_printf(0, "\f9\bNO MQTT - REBOOTING");
-    delay(1000);
-    rp2040.reboot();
-  }
-}
+static steady_clock::time_point last_loop_time = {}; 
+static steady_clock::time_point next_mqtt_time = {};
+static steady_clock::time_point next_screen_time = {};
 
 static void update_screen() {
   int ln = 0;
-  char line[80] = "";
+  ok_dock_layout->line_printf(ln++, "\f8\b\tV\tmA");
+  OK_NOTE("\n☀️ Power Station");
   for (auto& meter : meters) {
     if (meter.driver) {
-      sprintf(line + strlen(line), "\t\f9\b%s\b", meter.name);
+      auto const V = meter.driver->readBusVoltage() * 1e-3f;
+      auto const mA = meter.driver->readCurrent();
+      auto const mW = meter.driver->readPower();
+      auto const J = meter.driver->readEnergy();
+      auto const C = meter.driver->readDieTemp();
+      ok_dock_layout->line_printf(
+        ln++, "\f8.*s\t%.1f\t%.1f",
+        meter.name.size(), meter.name.data(), V, mA
+      );
       OK_NOTE(
-          "%s: %.1fV %.1fmA [%.3fmVs] %.0fmW %.3fJ %.1fC", meter.name,
-          meter.driver->readBusVoltage() * 1e-3f,
-          meter.driver->readCurrent(),
-          meter.driver->readShuntVoltage(),
-          meter.driver->readPower(),
-          meter.driver->readEnergy(),
-          meter.driver->readDieTemp());
+        "%.*s: %.1fV %.1fmA %.0fmW %.3fJ %.1fC",
+        meter.name.size(), meter.name.data(), V, mA, mW, J, C
+      );
     } else {
-      OK_NOTE("%s: not detected at startup", meter.name);
+      ok_dock_layout->line_printf(
+        ln++, "\f8.*s\t-\t-", meter.name.size(), meter.name.data()
+      );
+      OK_NOTE("%.*s: missing at startup", meter.name.size(), meter.name.data());
     }
   }
-  status_layout->line_printf(ln++, "%s", line + 1);
 
-  strcpy(line, "");
-  for (auto& meter : meters) {
-    if (!meter.driver) continue;
-    float sign = meter.driver->readCurrent() < 0 ? -1 : 1;
-    float power = meter.driver->readPower() * 1e-3f * sign;
-    sprintf(line + strlen(line), "\t\f12%.2fW", power);
-  }
-  status_layout->line_printf(ln++, "%s", line + 1);
-
-  strcpy(line, "");
-  for (auto& meter : meters) {
-    if (!meter.driver) continue;
-    auto const milliamps = meter.driver->readCurrent();
-    if (milliamps >= -999 && milliamps <= 999) {
-      sprintf(line + strlen(line), "\t\f8%.1f\f6V\2\f8%.0f\f6mA",
-              meter.driver->readBusVoltage() * 1e-3, milliamps);
-    } else {
-      sprintf(line + strlen(line), "\t\f8%.1f\f6V\2\f8%.1f\f6A",
-              meter.driver->readBusVoltage() * 1e-3, milliamps * 1e-3);
-    }
-  }
-  status_layout->line_printf(ln++, "%s", line + 1);
-  status_layout->line_printf(ln++, "\f3 ");
-
-  auto const& xst = xbee_monitor->status();
-  if (!xst.hardware_ver) {
-    status_layout->line_printf(ln++, "\f9No XBee status");
+  if (!cell_status) {
+    ok_dock_layout->line_printf(ln++, "\f8No cell");
+    OK_NOTE("Cell radio: No status");
+  } else if (!cell_status->running) {
+    ok_dock_layout->line_printf(ln++, "\f8Radio off");
+    OK_NOTE("Cell radio: Off");
+  } else if (!cell_status->registered) {
+    ok_dock_layout->line_printf(ln++, "\f8Searching");
+    OK_NOTE("Cell radio: Searching");
+  } else if (!cell_status->ip_attached) {
+    ok_dock_layout->line_printf(ln++, "\f8No IP");
+    OK_NOTE("Cell radio: Registered, no IP");
   } else {
-    status_layout->line_printf(
-        ln++, "\f9\bCell\b %s %s %s",
-        xst.network_operator,
-        xst.technology == XBeeStatusMonitor::UNKNOWN_TECH
-            ? "" : xst.technology_text(),
-        xst.operating_apn);
-
-    sprintf(line, "\f9");
-    if (xst.received_power != 0 || xst.received_quality != 0) {
-      sprintf(
-          line + strlen(line), "P%.1f Q%.1f ",
-          xst.received_power, xst.received_quality);
-    }
-    if (xst.assoc_status == XBeeStatusMonitor::CONNECTED) {
-      auto const& ip = xst.ip_address;
-      sprintf(line + strlen(line), "%d.%d.%d.%d ", ip[0], ip[1], ip[2], ip[3]);
-    } else {
-      sprintf(line + strlen(line), "%s ", xst.assoc_text());
-    }
-    status_layout->line_printf(ln++, "%s", line);
-  }
-  status_layout->line_printf(ln++, "\f3 ");
-
-  auto const now = millis();
-  int const wait_sec = (now - mqtt->last_receive_millis()) / 1000;
-  if (socket_keeper->socket() < 0) {
-    status_layout->line_printf(
-      ln++, "\f9\bSocket\b not connected (%ds)", wait_sec);
-  } else if (mqtt->active_socket() < 0) {
-    status_layout->line_printf(ln++, "\f9\bMQTT\b not active (%ds)", wait_sec);
-  } else if (mqtt->client()->error != MQTT_OK) {
-    char const* error = mqtt_error_str(mqtt->client()->error);
-    if (strncmp(error, "MQTT_", 5)) error += 5;
-    status_layout->line_printf(ln++, "\f9\bMQTT\b %s (%ds)", error, wait_sec);
-  } else if (mqtt->client()->typical_response_time < 0) {
-    status_layout->line_printf(
-      ln++, "\f9\bMQTT\b connecting... (%ds)", wait_sec);
-  } else {
-    auto const typ = mqtt->client()->typical_response_time;
-    status_layout->line_printf(ln++, "\f9\bMQTT\b OK ping=%.2fs", typ);
+    uint8_t a[4];
+    for (int i = 0; i < 4; ++i) a[i] = cell_status->ip_addr >> (8 * (3 - i));
+    ok_dock_layout->line_printf(
+      ln++, "\f8%d.%d.%d.%d %s", a[0], a[1], a[2], a[3],
+      cell_status->mqtt_ready ? "M" : "-"
+    );
+    OK_NOTE(
+      "Cell radio: IP %d.%d.%d.%d %s", a[0], a[1], a[2], a[3],
+      cell_status->mqtt_ready ? "+MQTT" : "!MQTT"
+    );
   }
 }
 
 static void update_mqtt() {
+  if (!cell_status || !cell_status->mqtt_ready) return;
+  if (cell_status->mqtt_publish_busy) return;
+
   JsonDocument doc;
-  doc["uptime"] = std::round(millis() * 1e-2f) * 0.1;
+  doc["uptime"] = std::round(raw_count<secd>(steady_clock::now()) * 10) * 0.1;
 
   auto json_meters = doc["power"];
   for (auto& meter : meters) {
@@ -184,50 +110,50 @@ static void update_mqtt() {
     json_meter["C"] = std::round(meter.driver->readDieTemp() * 10) * 0.1;
   }
 
-  auto const& xst = xbee_monitor->status();
   auto json_cell = doc["cell_radio"];
-  json_cell["assoc"] = xst.assoc_text();
-  json_cell["op"] = xst.network_operator;
-  json_cell["APN"] = xst.operating_apn;
-  json_cell["tech"] = xst.technology_text();
-  json_cell["RSRP"] = xst.received_power;
-  json_cell["RSRQ"] = xst.received_quality;
+  json_cell["op"] = cell_status->op_mcc * 1000 + cell_status->op_mnc;
+  json_cell["tech"] = cell_status->radio_tech;
+  json_cell["sig"] = cell_status->radio_rsrp;
+  json_cell["snr"] = cell_status->radio_snr;
 
-  char message[512];
-  auto const size = serializeJson(doc, message, sizeof(message) - 1);
-  mqtt_publish(
-      mqtt->client(), "blub/power_station",
-      message, size, MQTT_PUBLISH_QOS_1);
+  pub_buffer.clear();
+  auto const len = serializeJson(doc, pub_buffer.data(), pub_buffer.max_size());
+  pub_buffer.uninitialized_resize(len);
+  OK_NOTE("💬 MQTT publish (%db)", pub_buffer.size());
+  cell_modem->publish({"blub/power_station", pub_buffer});
 }
 
 void loop() {
   rp2040.wdt_reset();
-  poll_xbee();
+  auto const loop_time = steady_clock::now();
+  if (last_loop_time != steady_clock::time_point{}) {
+    auto const delay = loop_time - last_loop_time;
+    if (delay > 10_ms) OK_ERROR("Loop took %lldms", raw_count<millis64>(delay));
+  }
 
-  int const now = millis();
-  if (now >= next_screen_millis) {
-    next_screen_millis += 500;
+  cell_status = cell_modem->poll();
+  while (cell_status->mqtt_receive_ready) {
+    cell_modem->receive();
+    cell_status = cell_modem->poll();
+  }
+
+  if (loop_time >= next_screen_time) {
+    next_screen_time = loop_time + 500_ms;
     update_screen();
   }
 
-  if (now >= next_mqtt_millis) {
-    next_mqtt_millis += 30000;
+  if (loop_time >= next_mqtt_time) {
+    next_mqtt_time += 10_s;
     update_mqtt();
-  }
-
-  // Reboot before millis rollover
-  if (now > 0x7FFFFFFF - 1000) {
-    OK_NOTE("Rebooting before millis rollover!");
-    status_layout->line_printf(0, "\f9\bROLLOVER - REBOOTING");
-    delay(1000);
-    rp2040.reboot();
   }
 
   delay(1);
 }
 
 void setup() {
-  blub_station_init("POWER STA. INIT");
+  ok_serial_begin();
+  ok_dock_init_feather_v8();
+  ok_dock_layout->line_printf(0, "\v\f8Power Station");
 
   for (auto& meter : meters) {
     meter.driver.emplace();
@@ -241,18 +167,9 @@ void setup() {
     }
   }
 
-  if (!xbee_radio->raw_serial()) {
-    OK_ERROR("No XBee found, rebooting");
-    status_layout->line_printf(0, "\f9\bNO XBEE - REBOOTING");
-    delay(1000);
-    rp2040.reboot();
-  }
-
-  xbee_monitor = make_xbee_status_monitor();
-  socket_keeper = make_xbee_socket_keeper(
-      "egnor-2020.ofb.net", 1883, XBeeAPI::SocketCreate::Protocol::TCP);
-  mqtt = make_xbee_mqtt_adapter(512, 512, on_mqtt_incoming);
-
-  next_mqtt_millis = next_screen_millis = millis();
+  Serial1.setFIFOSize(2048);
+  Serial1.begin(115200);
+  cell_modem = make_cell_modem_client(&Serial1, 25, blub_mqtt_config, {});
+  next_mqtt_time = next_screen_time = steady_clock::now();
   rp2040.wdt_begin(5000);  // 5 second on-chip hardware watchdog (pet in loop())
 }

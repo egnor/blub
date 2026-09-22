@@ -60,7 +60,7 @@ class CellModemClientDef : public CellModemClient {
     if (server.cert.empty()) cert_state = CertState::DONE;  // no cert
   }
 
-  CellModemStatus const& poll() override {
+  CellModemStatus const* poll() override {
     auto const last_poll = poll_time;
     poll_time = steady_clock::now();
     auto const elapsed = poll_time - last_poll;
@@ -314,7 +314,7 @@ class CellModemClientDef : public CellModemClient {
     );
     status.mqtt_publish_busy = !mqtt_outgoing.topic.empty();
     status.mqtt_receive_ready = !mqtt_incoming.topic.empty();
-    return status;
+    return &status;
   }
 
   void publish(MqttMessage pub) override {
