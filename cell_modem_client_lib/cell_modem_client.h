@@ -51,9 +51,10 @@ struct CellModemStatus {
 class CellModemClient {
  public:
   virtual ~CellModemClient() = default;
+  virtual CellModemStatus const& status() const = 0;
 
-  // Call frequently (every few ms); the pointer stays valid
-  virtual CellModemStatus const* poll() = 0;
+  // Call every few ms to talk to the serial port
+  virtual void poll() = 0;
 
   // Requires poll()->mqtt_ready && !poll()->mqtt_publish_busy; string views
   // must remain valid until poll()->mqtt_publish_busy is false again.

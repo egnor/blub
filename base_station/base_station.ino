@@ -17,7 +17,7 @@
 using namespace etl::chrono;
 using namespace etl::chrono_literals;
 
-static const OkLoggingContext OK_CONTEXT("power_station");
+static const OkLoggingContext OK_CONTEXT("base_station");
 
 struct meter {
   int i2c_address;
@@ -33,7 +33,6 @@ static etl::array<meter, 4> meters{{
 }};
 
 static etl::unique_ptr<CellModemClient> cell_modem;
-static CellModemStatus const* cell_status = nullptr;
 static etl::string<512> pub_buffer;
 
 static steady_clock::time_point last_loop_time = {}; 
@@ -42,7 +41,6 @@ static steady_clock::time_point next_screen_time = {};
 
 static void update_screen() {
   int ln = 0;
-  ok_dock_layout->line_printf(ln++, "\f8\b\tV\tmA");
   OK_NOTE("\n☀️ Power Station");
   for (auto& meter : meters) {
     if (meter.driver) {
@@ -52,7 +50,7 @@ static void update_screen() {
       auto const J = meter.driver->readEnergy();
       auto const C = meter.driver->readDieTemp();
       ok_dock_layout->line_printf(
-        ln++, "\f8.*s\t%.1f\t%.1f",
+        ln++, "\f6%.*s\t%.1fV\t%.1fmA",
         meter.name.size(), meter.name.data(), V, mA
       );
       OK_NOTE(
@@ -61,41 +59,52 @@ static void update_screen() {
       );
     } else {
       ok_dock_layout->line_printf(
-        ln++, "\f8.*s\t-\t-", meter.name.size(), meter.name.data()
+        ln++, "\f6.*s\t-\t-", meter.name.size(), meter.name.data()
       );
       OK_NOTE("%.*s: missing at startup", meter.name.size(), meter.name.data());
     }
   }
 
-  if (!cell_status) {
-    ok_dock_layout->line_printf(ln++, "\f8No cell");
-    OK_NOTE("Cell radio: No status");
-  } else if (!cell_status->running) {
-    ok_dock_layout->line_printf(ln++, "\f8Radio off");
-    OK_NOTE("Cell radio: Off");
-  } else if (!cell_status->registered) {
-    ok_dock_layout->line_printf(ln++, "\f8Searching");
-    OK_NOTE("Cell radio: Searching");
-  } else if (!cell_status->ip_attached) {
-    ok_dock_layout->line_printf(ln++, "\f8No IP");
-    OK_NOTE("Cell radio: Registered, no IP");
+  if (!cell_modem) {
+    ok_dock_layout->line_printf(ln++, "\f6No cell modem");
   } else {
-    uint8_t a[4];
-    for (int i = 0; i < 4; ++i) a[i] = cell_status->ip_addr >> (8 * (3 - i));
-    ok_dock_layout->line_printf(
-      ln++, "\f8%d.%d.%d.%d %s", a[0], a[1], a[2], a[3],
-      cell_status->mqtt_ready ? "M" : "-"
-    );
-    OK_NOTE(
-      "Cell radio: IP %d.%d.%d.%d %s", a[0], a[1], a[2], a[3],
-      cell_status->mqtt_ready ? "+MQTT" : "!MQTT"
-    );
+    auto const& status = cell_modem->status();
+    if (!status.running) {
+      ok_dock_layout->line_printf(ln++, "\f6Radio off");
+      OK_NOTE("Cell radio: Off");
+    } else if (!status.registered) {
+      ok_dock_layout->line_printf(ln++, "\f6Searching");
+      OK_NOTE("Cell radio: Searching");
+    } else {
+      ok_dock_layout->line_printf(
+        ln++, "\f6%+d/%+ddB %s%s",
+        status.radio_rsrp, status.radio_snr,
+        status.ip_attached ? " IP" : "",
+        status.mqtt_ready ? " MQ" : "",
+        status.mqtt_publish_busy ? "*" : ""
+      );
+      if (status.ip_attached) {
+        uint8_t a[4];
+        for (int i = 0; i < 4; ++i) a[i] = status.ip_addr >> (8 * (3 - i));
+        OK_NOTE(
+          "Cell radio: %+ddBm/%+ddB %d.%d.%d.%d %s%s",
+          status.radio_rsrp, status.radio_snr, a[0], a[1], a[2], a[3],
+          status.mqtt_ready ? "+MQTT" : "!MQTT",
+          status.mqtt_publish_busy ? "*" : ""
+        );
+      } else {
+        OK_NOTE(
+          "Cell radio: %+ddBm/%+ddB !IP", status.radio_rsrp, status.radio_snr
+        );
+      }
+    }
   }
 }
 
 static void update_mqtt() {
-  if (!cell_status || !cell_status->mqtt_ready) return;
-  if (cell_status->mqtt_publish_busy) return;
+  if (!cell_modem) return;
+  const auto& status = cell_modem->status();
+  if (!status.mqtt_ready || status.mqtt_publish_busy) return;
 
   JsonDocument doc;
   doc["uptime"] = std::round(raw_count<secd>(steady_clock::now()) * 10) * 0.1;
@@ -111,16 +120,16 @@ static void update_mqtt() {
   }
 
   auto json_cell = doc["cell_radio"];
-  json_cell["op"] = cell_status->op_mcc * 1000 + cell_status->op_mnc;
-  json_cell["tech"] = cell_status->radio_tech;
-  json_cell["sig"] = cell_status->radio_rsrp;
-  json_cell["snr"] = cell_status->radio_snr;
+  json_cell["op"] = status.op_mcc * 1000 + status.op_mnc;
+  json_cell["tech"] = status.radio_tech;
+  json_cell["sig"] = status.radio_rsrp;
+  json_cell["snr"] = status.radio_snr;
 
   pub_buffer.clear();
   auto const len = serializeJson(doc, pub_buffer.data(), pub_buffer.max_size());
   pub_buffer.uninitialized_resize(len);
   OK_NOTE("💬 MQTT publish (%db)", pub_buffer.size());
-  cell_modem->publish({"blub/power_station", pub_buffer});
+  cell_modem->publish({"blub/base_station", pub_buffer});
 }
 
 void loop() {
@@ -131,11 +140,8 @@ void loop() {
     if (delay > 10_ms) OK_ERROR("Loop took %lldms", raw_count<millis64>(delay));
   }
 
-  cell_status = cell_modem->poll();
-  while (cell_status->mqtt_receive_ready) {
-    cell_modem->receive();
-    cell_status = cell_modem->poll();
-  }
+  cell_modem->poll();
+  while (cell_modem->status().mqtt_receive_ready) cell_modem->receive();
 
   if (loop_time >= next_screen_time) {
     next_screen_time = loop_time + 500_ms;

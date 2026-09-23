@@ -109,13 +109,13 @@ static bool expect_idle(
 // Polls with the fake modem answering until stop(status) or wait_ms elapses
 static bool run_until(
   etl::unique_ptr<CellModemClient> const& cm, FakeSerial* serial, int wait_ms,
-  bool (*stop)(CellModemStatus const*)
+  bool (*stop)(CellModemStatus const&)
 ) {
   for (int ms = 0; ms < wait_ms; ms += 10) {
-    auto const* status = cm->poll();
+    cm->poll();
     if (!serial->write_buf.empty()) {
       if (!fake_modem_reply(serial)) return false;
-    } else if (stop(status)) {
+    } else if (stop(cm->status())) {
       return true;
     }
     delay(10);
@@ -125,15 +125,12 @@ static bool run_until(
 }
 
 static bool run_until_ready(
-  etl::unique_ptr<CellModemClient> const& cm, FakeSerial* serial
+  etl::unique_ptr<CellModemClient> const& cm, FakeSerial* serial,
+  int wait_ms = 3000
 ) {
   fake_connected = false;
-  auto const ready = [](CellModemStatus const* s) { return s->mqtt_ready; };
-  return run_until(cm, serial, 3000, ready);
-}
-
-static bool en_pin_low() {
-  return gpio_get_dir(EN_PIN) == 1 && gpio_get_out_level(EN_PIN) == LOW;
+  auto const ready = [](CellModemStatus const& s) { return s.mqtt_ready; };
+  return run_until(cm, serial, wait_ms, ready);
 }
 
 //
@@ -149,7 +146,8 @@ static void test_modem_client_setup() {
   // Verify the specific initialization and poll cycle
   cm->poll();
   VERIFY_A_OP_B_STR(serial.write_buf, ==, "");
-  VERIFY_TRUE(en_pin_low());
+  VERIFY_A_OP_B_INT(gpio_get_dir(EN_PIN), ==, 1);
+  VERIFY_A_OP_B_INT(gpio_get_out_level(EN_PIN), ==, LOW);
 
   expect(cm, &serial, "\r+++\"\rAT\r");
   VERIFY_A_OP_B_INT(gpio_get_dir(EN_PIN), ==, 0);
@@ -178,39 +176,39 @@ static void test_modem_client_setup() {
   VERIFY_TRUE(fake_connected);
 
   // Status after initial setup
-  auto const* status = cm->poll();
-  VERIFY_A_OP_B_STR(status->hardware, ==, "Fake Hardware");
-  VERIFY_A_OP_B_STR(status->imeisv, ==, "1122222233333344");
-  VERIFY_A_OP_B_STR(status->versions[0], ==, "Fake Revision");
-  VERIFY_A_OP_B_STR(status->versions[1], ==, "Fake SM");
-  VERIFY_A_OP_B_STR(status->versions[2], ==, "Fake NCS");
-  VERIFY_A_OP_B_STR(status->versions[3], ==, "Blub");
-  VERIFY_TRUE(status->running);
-  VERIFY_TRUE(status->registered);
-  VERIFY_TRUE(status->roaming);
-  VERIFY_TRUE(!status->failed);
-  VERIFY_A_OP_B_INT(status->op_mcc, ==, 111);
-  VERIFY_A_OP_B_INT(status->op_mnc, ==, 222);
-  VERIFY_A_OP_B_INT(status->cell_tac, ==, 0x1234);
-  VERIFY_A_OP_B_INT(status->cell_phys_id, ==, 123);
-  VERIFY_A_OP_B_INT(status->cell_id, ==, 0x12345678);
-  VERIFY_A_OP_B_INT(status->radio_earfcn, ==, 1234);
-  VERIFY_A_OP_B_INT(status->radio_tech, ==, 7);
-  VERIFY_A_OP_B_INT(status->radio_band, ==, 12);
-  VERIFY_A_OP_B_INT(status->radio_rsrp, ==, -129);
-  VERIFY_A_OP_B_INT(status->radio_snr, ==, -13);
-  VERIFY_TRUE(status->ip_attached);
-  VERIFY_A_OP_B_INT(status->ip_addr, ==, 0x0C22384E);
-  VERIFY_TRUE(status->mqtt_ready);
-  VERIFY_TRUE(!status->mqtt_publish_busy);
-  VERIFY_TRUE(!status->mqtt_receive_ready);
+  auto const& st = cm->status();
+  VERIFY_A_OP_B_STR(st.hardware, ==, "Fake Hardware");
+  VERIFY_A_OP_B_STR(st.imeisv, ==, "1122222233333344");
+  VERIFY_A_OP_B_STR(st.versions[0], ==, "Fake Revision");
+  VERIFY_A_OP_B_STR(st.versions[1], ==, "Fake SM");
+  VERIFY_A_OP_B_STR(st.versions[2], ==, "Fake NCS");
+  VERIFY_A_OP_B_STR(st.versions[3], ==, "Blub");
+  VERIFY_TRUE(st.running);
+  VERIFY_TRUE(st.registered);
+  VERIFY_TRUE(st.roaming);
+  VERIFY_TRUE(!st.failed);
+  VERIFY_A_OP_B_INT(st.op_mcc, ==, 111);
+  VERIFY_A_OP_B_INT(st.op_mnc, ==, 222);
+  VERIFY_A_OP_B_INT(st.cell_tac, ==, 0x1234);
+  VERIFY_A_OP_B_INT(st.cell_phys_id, ==, 123);
+  VERIFY_A_OP_B_INT(st.cell_id, ==, 0x12345678);
+  VERIFY_A_OP_B_INT(st.radio_earfcn, ==, 1234);
+  VERIFY_A_OP_B_INT(st.radio_tech, ==, 7);
+  VERIFY_A_OP_B_INT(st.radio_band, ==, 12);
+  VERIFY_A_OP_B_INT(st.radio_rsrp, ==, -129);
+  VERIFY_A_OP_B_INT(st.radio_snr, ==, -13);
+  VERIFY_TRUE(st.ip_attached);
+  VERIFY_A_OP_B_INT(st.ip_addr, ==, 0x0C22384E);
+  VERIFY_TRUE(st.mqtt_ready);
+  VERIFY_TRUE(!st.mqtt_publish_busy);
+  VERIFY_TRUE(!st.mqtt_receive_ready);
 
   // Periodic status poll, 10s later
   expect(cm, &serial, "AT%XMONITOR\r", 11000);
   expect(cm, &serial, "AT+CGPADDR\r");
   expect(cm, &serial, "AT#XMQTTCON?\r");
   expect_idle(cm, &serial, 500);
-  VERIFY_TRUE(cm->poll()->mqtt_ready);
+  VERIFY_TRUE(cm->status().mqtt_ready);
 }
 
 static void test_cert_rewrite() {
@@ -274,22 +272,21 @@ static void test_modem_restart() {
   // Unexpected "Ready": the modem rebooted, everything is invalid
   serial.read_buf = "\xffReady\r\n";
   fake_connected = false;
-  auto const* st1 = cm->poll();
-  VERIFY_TRUE(!st1->running);
-  VERIFY_TRUE(!st1->ip_attached);
-  VERIFY_TRUE(!st1->mqtt_ready);
-  VERIFY_TRUE(st1->failed);
+  cm->poll();
+  VERIFY_TRUE(!cm->status().running);
+  VERIFY_TRUE(!cm->status().ip_attached);
+  VERIFY_TRUE(!cm->status().mqtt_ready);
+  VERIFY_TRUE(cm->status().failed);
 
   // Probe, then full setup, then reconnect
   fake_log.clear();
   expect(cm, &serial, "\r+++\"\rAT\r");
   expect(cm, &serial, "AT+CGMM\r");
-  auto const ready = [](CellModemStatus const* s) { return s->mqtt_ready; };
-  run_until(cm, &serial, 60000, ready);
+  run_until_ready(cm, &serial, 60000);  // wait for MQTT reconnect backoff
   VERIFY_A_OP_B_INT(fake_log.find("AT+CFUN=1"), !=, etl::istring::npos);
   VERIFY_A_OP_B_INT(fake_log.find("AT#XMQTTCON=0"), ==, etl::istring::npos);
   VERIFY_A_OP_B_INT(fake_log.find("AT#XMQTTCON=1"), !=, etl::istring::npos);
-  VERIFY_TRUE(!cm->poll()->failed);
+  VERIFY_TRUE(!cm->status().failed);
 }
 
 static void test_mqtt_publish() {
@@ -298,23 +295,23 @@ static void test_mqtt_publish() {
   auto const cm = make_cell_modem_client(&serial, EN_PIN, mqtt_config(), {});
   if (!run_until_ready(cm, &serial)) return;
 
-  auto const* st1 = cm->poll();
-  if (!VERIFY_TRUE(!st1->mqtt_publish_busy)) return;
+  cm->poll();
+  if (!VERIFY_TRUE(!cm->status().mqtt_publish_busy)) return;
   cm->publish({.topic = "test-topic", .payload = "test-payload"});
-  VERIFY_TRUE(st1->mqtt_publish_busy);  // modified in reference
+  VERIFY_TRUE(cm->status().mqtt_publish_busy);  // modified in reference
 
   expect(cm, &serial, "AT#XMQTTPUB=\"test-topic\",\"\",1,0,12\r");
   expect(cm, &serial, "test-payload");
   serial.read_buf = "#XDATAMODE: 0\r\n";  // data sent, waiting for PUBACK
 
-  auto const* st2 = cm->poll();
-  VERIFY_TRUE(st2->mqtt_publish_busy);  // after #XDATAMODE: 0
+  cm->poll();
+  VERIFY_TRUE(cm->status().mqtt_publish_busy);  // after #XDATAMODE: 0
   expect_idle(cm, &serial, 100);  // idle until PUBACK
 
   serial.read_buf = "#XMQTTEVT: 3,0\r\n";  // PUBACK
-  auto const* st3 = cm->poll();
-  VERIFY_TRUE(!st3->mqtt_publish_busy);  // after PUBACK
-  VERIFY_TRUE(st3->mqtt_ready);
+  cm->poll();
+  VERIFY_TRUE(!cm->status().mqtt_publish_busy);  // after PUBACK
+  VERIFY_TRUE(cm->status().mqtt_ready);
   expect_idle(cm, &serial, 100);
 }
 
@@ -328,17 +325,16 @@ static void test_mqtt_publish_rejected() {
   cm->publish({.topic = "test-topic", .payload = "test-payload"});
   expect(cm, &serial, "AT#XMQTTPUB=\"test-topic\",\"\",1,0,12\r");
   serial.read_buf = "ERROR\r\n#XMQTTEVT: 1,-128\r\n";
-  auto const* st1 = cm->poll();
-  VERIFY_TRUE(!st1->mqtt_publish_busy);  // dropped
-  VERIFY_TRUE(!st1->mqtt_ready);  // reconnecting
+  cm->poll();
+  VERIFY_TRUE(!cm->status().mqtt_publish_busy);  // dropped
+  VERIFY_TRUE(!cm->status().mqtt_ready);  // reconnecting
 
   // Reconnects (after backoff) without retrying the publish
   fake_log.clear();
-  auto const ready = [](CellModemStatus const* s) { return s->mqtt_ready; };
-  run_until(cm, &serial, 60000, ready);
+  run_until_ready(cm, &serial, 60000);  // wait for MQTT reconnect backoff
   VERIFY_A_OP_B_INT(fake_log.find("AT#XMQTTPUB"), ==, etl::istring::npos);
   VERIFY_A_OP_B_INT(fake_log.find("AT#XMQTTCFG"), !=, etl::istring::npos);
-  VERIFY_TRUE(!cm->poll()->mqtt_publish_busy);
+  VERIFY_TRUE(!cm->status().mqtt_publish_busy);
 }
 
 static void test_mqtt_publish_data_failed() {
@@ -352,14 +348,13 @@ static void test_mqtt_publish_data_failed() {
   expect(cm, &serial, "AT#XMQTTPUB=\"test-topic\",\"\",1,0,12\r");
   expect(cm, &serial, "test-payload");
   serial.read_buf =  "#XDATAMODE: -1\r\n";
-  auto const* st1 = cm->poll();
-  VERIFY_TRUE(!st1->mqtt_publish_busy);  // dropped
-  VERIFY_TRUE(!st1->mqtt_ready);  // reconnecting
+  cm->poll();
+  VERIFY_TRUE(!cm->status().mqtt_publish_busy);  // dropped
+  VERIFY_TRUE(!cm->status().mqtt_ready);  // reconnecting
   expect(cm, &serial, "AT#XMQTTCON=0\r");
 
   fake_log.clear();
-  auto const ready = [](CellModemStatus const* s) { return s->mqtt_ready; };
-  run_until(cm, &serial, 60000, ready);
+  run_until_ready(cm, &serial, 60000);  // wait for MQTT reconnect backoff
   VERIFY_A_OP_B_INT(fake_log.find("AT#XMQTTPUB"), ==, etl::istring::npos);
   VERIFY_A_OP_B_INT(fake_log.find("AT#XMQTTCON=1"), !=, etl::istring::npos);
 }
@@ -372,21 +367,21 @@ static void test_mqtt_receive() {
 
   serial.read_buf =
     "#XMQTTMSG: 10,13\r\ntest/topic\r\nHello, World!\r\n#XMQTTEVT: 2,0\r\n";
-  auto const* st1 = cm->poll();
+  cm->poll();
   VERIFY_A_OP_B_STR(serial.write_buf, ==, "");  // still idle
-  VERIFY_TRUE(st1->mqtt_receive_ready);
+  VERIFY_TRUE(cm->status().mqtt_receive_ready);
   auto const m1 = cm->receive();
   VERIFY_A_OP_B_STR(m1.topic, ==, "test/topic");
   VERIFY_A_OP_B_STR(m1.payload, ==, "Hello, World!");
 
-  auto const* st2 = cm->poll();  // consumes the trailing #XMQTTEVT
-  VERIFY_TRUE(!st2->mqtt_receive_ready);
+  cm->poll();  // consumes the trailing #XMQTTEVT
+  VERIFY_TRUE(!cm->status().mqtt_receive_ready);
   expect_idle(cm, &serial, 100);
 
   // Payloads may contain anything, including line breaks and quotes
   serial.read_buf = "#XMQTTMSG: 1,9\r\nt\r\n\"a\r\nOK\r\n\"\r\n";
-  auto const* st3 = cm->poll();
-  VERIFY_TRUE(st3->mqtt_receive_ready);
+  cm->poll();
+  VERIFY_TRUE(cm->status().mqtt_receive_ready);
   auto const m3 = cm->receive();
   VERIFY_A_OP_B_STR(m3.topic, ==, "t");
   VERIFY_A_OP_B_STR(m3.payload, ==, "\"a\r\nOK\r\n\"");
@@ -405,20 +400,22 @@ static void test_mqtt_receive_oversize() {
   big.append(3000, 'x');
   big.append("\r\n#XMQTTEVT: 2,0\r\n");
   serial.read_buf = big;
-  auto const* st1 = cm->poll();
-  VERIFY_TRUE(!st1->mqtt_receive_ready);
+  cm->poll();
+  VERIFY_TRUE(!cm->status().mqtt_receive_ready);
   expect_idle(cm, &serial, 100);
   VERIFY_A_OP_B_INT(serial.read_buf.size(), ==, 0);  // everything consumed
 
   serial.read_buf = "#XMQTTMSG: 4,4\r\ntest\r\nabcd\r\n";
-  auto const* st2 = cm->poll();
-  VERIFY_TRUE(st2->mqtt_receive_ready);
+  cm->poll();
+  VERIFY_TRUE(cm->status().mqtt_receive_ready);
   VERIFY_A_OP_B_STR(cm->receive().payload, ==, "abcd");
 
   // Absurdly big: reset the modem rather than wait for it all
   serial.read_buf = "#XMQTTMSG: 4,70000\r\n";
-  auto const reset = [](CellModemStatus const*) { return en_pin_low(); };
-  VERIFY_TRUE(run_until(cm, &serial, 1000, reset));
+  cm->poll();  // one poll to process the #XMQTTMSG
+  cm->poll();  // another poll to initiate hard reset
+  VERIFY_A_OP_B_INT(gpio_get_dir(EN_PIN), ==, 1);
+  VERIFY_A_OP_B_INT(gpio_get_out_level(EN_PIN), ==, 0);
 }
 
 static void test_mqtt_disconnect_event() {
@@ -432,12 +429,11 @@ static void test_mqtt_disconnect_event() {
   fake_connected = false;
   cm->poll();
   expect(cm, &serial, "AT#XMQTTCON?\r");
-  auto const* st1 = cm->poll();
-  VERIFY_TRUE(!st1->mqtt_ready);
+  cm->poll();
+  VERIFY_TRUE(!cm->status().mqtt_ready);
 
   fake_log.clear();
-  auto const ready = [](CellModemStatus const* s) { return s->mqtt_ready; };
-  run_until(cm, &serial, 60000, ready);
+  run_until_ready(cm, &serial, 60000);  // wait for MQTT reconnect backoff
   VERIFY_A_OP_B_INT(fake_log.find("AT#XMQTTCON=0"), ==, etl::istring::npos);
   VERIFY_A_OP_B_INT(fake_log.find("AT#XMQTTCON=1"), !=, etl::istring::npos);
 }

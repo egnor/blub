@@ -32,7 +32,7 @@ static const OkLoggingContext
 
 #define COUNT_ERROR(counter, ...) ({  \
   OK_LOG(OK_CONTEXT_##counter, OK_ERROR_LEVEL, __VA_ARGS__);  \
-  ++status.counter;  \
+  ++stat.counter;  \
 })
 
 class CellModemClientDef : public CellModemClient {
@@ -60,7 +60,9 @@ class CellModemClientDef : public CellModemClient {
     if (server.cert.empty()) cert_state = CertState::DONE;  // no cert
   }
 
-  CellModemStatus const* poll() override {
+  CellModemStatus const& status() const override { return stat; }
+
+  void poll() override {
     auto const last_poll = poll_time;
     poll_time = steady_clock::now();
     auto const elapsed = poll_time - last_poll;
@@ -240,16 +242,16 @@ class CellModemClientDef : public CellModemClient {
       // - disconnect if !ip_attached, NOT for !registered by itself
       } else if (mqtt_state == MqttState::NEEDS_DISCONNECT || (
                    mqtt_state >= MqttState::CONNACK_WAIT && (
-                     !status.ip_attached || poll_time >= next_mqtt_reset))) {
-        if (mqtt_state >= MqttState::CONNACK_WAIT) ++status.mqtt_resets;
+                     !stat.ip_attached || poll_time >= next_mqtt_reset))) {
+        if (mqtt_state >= MqttState::CONNACK_WAIT) ++stat.mqtt_resets;
         out_todo.push({"AT#XMQTTCON=0\r", State::AT_XMQTT_WAIT});
         mqtt_state = MqttState::NEEDS_CONNECT;
       } else if (mqtt_state == MqttState::NEEDS_CONNECT &&
-                 !status.imeisv.empty() && !mqtt_server.host.empty() &&
-                 status.registered && status.ip_attached &&
+                 !stat.imeisv.empty() && !mqtt_server.host.empty() &&
+                 stat.registered && stat.ip_attached &&
                  poll_time >= mqtt_backoff) {
         out_todo.push({"AT#XMQTTCFG=\"", State::READY});
-        out_todo.push({status.imeisv, State::READY});
+        out_todo.push({stat.imeisv, State::READY});
         out_todo.push({"\",60,1\r", State::AT_XMQTT_WAIT});
         out_todo.push({"AT#XMQTTCON=1,\"", State::READY});
         out_todo.push({mqtt_server.user, State::READY});
@@ -308,13 +310,12 @@ class CellModemClientDef : public CellModemClient {
       mqtt_outgoing = {};
     }
 
-    status.mqtt_ready = (
+    stat.mqtt_ready = (
       mqtt_state >= MqttState::READY &&
       mqtt_subs_todo.empty()
     );
-    status.mqtt_publish_busy = !mqtt_outgoing.topic.empty();
-    status.mqtt_receive_ready = !mqtt_incoming.topic.empty();
-    return &status;
+    stat.mqtt_publish_busy = !mqtt_outgoing.topic.empty();
+    stat.mqtt_receive_ready = !mqtt_incoming.topic.empty();
   }
 
   void publish(MqttMessage pub) override {
@@ -331,7 +332,7 @@ class CellModemClientDef : public CellModemClient {
     } else {
       OK_DETAIL("💬 Pub request: %s", abbr(pub.topic).c_str());
       mqtt_outgoing = pub;
-      status.mqtt_publish_busy = true;
+      stat.mqtt_publish_busy = true;
     }
   }
 
@@ -339,7 +340,7 @@ class CellModemClientDef : public CellModemClient {
     if (mqtt_incoming.topic.empty()) {
       COUNT_ERROR(usage_errors, "Receive while empty");
     }
-    status.mqtt_receive_ready = false;
+    stat.mqtt_receive_ready = false;
     auto const temp = mqtt_incoming;
     mqtt_incoming = {};
     return temp;
@@ -386,7 +387,7 @@ class CellModemClientDef : public CellModemClient {
   int const enable_pin;
   MqttServerConfig const mqtt_server;
   etl::span<etl::string_view const> const mqtt_subs;
-  CellModemStatus status;
+  CellModemStatus stat;
 
   State state = State::READY;
   steady_clock::time_point poll_time = {};
@@ -422,7 +423,7 @@ class CellModemClientDef : public CellModemClient {
     state = State::READY;
     cert_state = CertState::UNKNOWN;
     mqtt_state = MqttState::NEEDS_DISCONNECT;
-    status.running = status.registered = status.ip_attached = false;
+    stat.running = stat.registered = stat.ip_attached = false;
     in_counted_todo = -1;
     in_buf.clear();
     out_todo.clear();
@@ -441,11 +442,11 @@ class CellModemClientDef : public CellModemClient {
 
     // "Ready" is often prefixed with \xFF because... UART init or something?
     if (eat(&rest, "Ready") || eat(&rest, "\xffReady")) {
-      if (!status.running) {
+      if (!stat.running) {
         OK_NOTE("📡 Modem init: %s", abbr(in_buf).c_str());
       } else {
         COUNT_ERROR(hard_resets, "Modem restart: %s", abbr(in_buf).c_str());
-        status.failed = true;
+        stat.failed = true;
       }
       reset_session_state();
       return;
@@ -455,7 +456,7 @@ class CellModemClientDef : public CellModemClient {
       // Modem library fault/shutdown/recovery; MQTT state is unreliable
       // after this, so use the reset ladder rather than trying to be clever
       COUNT_ERROR(modem_errors, "(st=%d) %s", state, abbr(in_buf).c_str());
-      status.failed = true;
+      stat.failed = true;
       reset_session_state();
       next_hard_reset = {};  // reset ASAP
       return;
@@ -516,15 +517,19 @@ class CellModemClientDef : public CellModemClient {
         if (eat(&rest, ",")) eat_quoted(&rest, &a1);
         if (eat(&rest, ",")) eat_quoted(&rest, &a2);
         if (a1.empty()) {
-          status.ip_addr = 0;
+          stat.ip_addr = 0;
         } else {
           int b1, b2, b3, b4;
           if (eat_int(&a1, &b1) && eat(&a1, ".") &&
               eat_int(&a1, &b2) && eat(&a1, ".") &&
               eat_int(&a1, &b3) && eat(&a1, ".") &&
               eat_int(&a1, &b4) && eat(&a1, "")) {
-            status.ip_attached = true;
-            status.ip_addr = (b1 << 24) | (b2 << 16) | (b3 << 8) | b4;
+            uint32_t const addr = (b1 << 24) | (b2 << 16) | (b3 << 8) | b4;
+            if (!stat.ip_attached || stat.ip_addr != addr) {
+              OK_NOTE("IP attached: %d.%d.%d.%d", b1, b2, b3, b4);
+              stat.ip_attached = true;
+              stat.ip_addr = (b1 << 24) | (b2 << 16) | (b3 << 8) | b4;
+            }
             if (state == State::AT_CGPADDR_WAIT) state = State::OK_WAIT;
           } else {
             COUNT_ERROR(serial_errors, "Bad IPv4: %s", abbr(in_buf).c_str());
@@ -536,7 +541,10 @@ class CellModemClientDef : public CellModemClient {
 
     if (eat(&rest, "+CGSN:")) {
       etl::string_view v;
-      if (eat_quoted(&rest, &v)) status.imeisv = v.empty() ? "-" : v;
+      if (eat_quoted(&rest, &v) && v != stat.imeisv) {
+        OK_NOTE("IMEI-SV: %.*s", v.size(), v.data());
+        stat.imeisv = v;
+      }
       return;
     }
 
@@ -580,14 +588,13 @@ class CellModemClientDef : public CellModemClient {
     if (eat(&rest, "%XMONITOR:")) {
       int reg;
       if (eat_int(&rest, &reg)) {
-        status.running = (reg == 1 || reg == 2 || reg == 5);
-        status.registered = (reg == 1 || reg == 5);
-        status.roaming = (reg == 5);
-        if (reg == 3 || reg == 90) status.failed = true;
-        if (status.running) status.failed = false;
+        bool const old_run = stat.running, old_reg = stat.registered;
+        stat.running = (reg == 1 || reg == 2 || reg == 5);
+        stat.registered = (reg == 1 || reg == 5);
+        stat.roaming = (reg == 5);
+        stat.failed = (reg == 3 || reg == 90);
 
-        // restart the radio (AT+CFUN=4) if 5min elapse without searching
-        if (status.running) next_radio_reset = poll_time + 300_s;
+        if (stat.running) next_radio_reset = poll_time + 300_s;
 
         etl::string_view op_full, op_short, op_mcc_mnc;
         etl::string_view cell_tac, cell_id;
@@ -609,16 +616,28 @@ class CellModemClientDef : public CellModemClient {
             eat(&rest, ",") && eat_quoted(&rest, &power_atime) &&
             eat(&rest, ",") && eat_quoted(&rest, &power_tau_ext) &&
             eat(&rest, ",") && eat_quoted(&rest, &power_tau)) {
-          status.op_mcc = etl::to_arithmetic<uint16_t>(op_mcc_mnc.substr(0, 3));
-          status.op_mnc = etl::to_arithmetic<uint16_t>(op_mcc_mnc.substr(3, 3));
-          status.cell_tac = etl::to_arithmetic<uint16_t>(cell_tac, etl::hex);
-          status.cell_phys_id = cell_phys_id;
-          status.cell_id = etl::to_arithmetic<uint32_t>(cell_id, etl::hex);
-          status.radio_earfcn = radio_earfcn;
-          status.radio_tech = radio_tech;
-          status.radio_band = radio_band;
-          status.radio_rsrp = radio_rsrp == 255 ? -0x8000 : radio_rsrp - 141;
-          status.radio_snr = radio_snr == 127 ? -0x8000 : radio_snr - 25;
+          stat.op_mcc = etl::to_arithmetic<uint16_t>(op_mcc_mnc.substr(0, 3));
+          stat.op_mnc = etl::to_arithmetic<uint16_t>(op_mcc_mnc.substr(3, 3));
+          stat.cell_tac = etl::to_arithmetic<uint16_t>(cell_tac, etl::hex);
+          stat.cell_phys_id = cell_phys_id;
+          stat.cell_id = etl::to_arithmetic<uint32_t>(cell_id, etl::hex);
+          stat.radio_earfcn = radio_earfcn;
+          stat.radio_tech = radio_tech;
+          stat.radio_band = radio_band;
+          stat.radio_rsrp = radio_rsrp == 255 ? -0x8000 : radio_rsrp - 141;
+          stat.radio_snr = radio_snr == 127 ? -0x8000 : radio_snr - 25;
+        }
+
+        if (stat.running != old_run || stat.registered != old_reg) {
+          if (!stat.running) {
+            OK_NOTE("Radio stopped");
+          } else if (!stat.registered) {
+            OK_NOTE("Radio searching...");
+          } else {
+            OK_NOTE("Registered: %03d%03d %+ddBm %+ddB",
+                    stat.op_mcc, stat.op_mnc,
+                    stat.radio_rsrp, stat.radio_snr);
+          }
         }
       }
       return;
@@ -636,7 +655,7 @@ class CellModemClientDef : public CellModemClient {
           case MqttState::READY:
           case MqttState::SUBACK_WAIT:
           case MqttState::PUBACK_WAIT:
-            COUNT_ERROR(mqtt_errors, "Reconnecting");
+            COUNT_ERROR(mqtt_errors, "Disconnected, reconnecting");
             mqtt_state = MqttState::NEEDS_CONNECT;
             break;
         }
@@ -660,14 +679,14 @@ class CellModemClientDef : public CellModemClient {
                 ((eat(&rest, ",") && eat_int(&rest, &sec_tag)) || true)) {
               int const config_sec = mqtt_server.cert.empty() ? -1 : 0;
               if (host != mqtt_server.host || port != mqtt_server.port ||
-                  id != status.imeisv || sec_tag != config_sec) {
+                  id != stat.imeisv || sec_tag != config_sec) {
                 COUNT_ERROR(
                   mqtt_errors,
                   "Bad conn:\n  %.*s:%d[%d] (%.*s) !=\n  %.*s:%d[%d] (%.*s)",
                   host.size(), host.data(), port, sec_tag, id.size(), id.data(),
                   mqtt_server.host.size(), mqtt_server.host.data(),
                   mqtt_server.port, config_sec,
-                  status.imeisv.size(), status.imeisv.data()
+                  stat.imeisv.size(), stat.imeisv.data()
                 );
                 mqtt_state = MqttState::NEEDS_DISCONNECT;
               }
@@ -689,7 +708,7 @@ class CellModemClientDef : public CellModemClient {
             COUNT_ERROR(mqtt_errors, "Connect fail: %s", abbr(in_buf).c_str());
             if (mqtt_state >= MqttState::CONNACK_WAIT) do_poll_mqtt = true;
           } else if (mqtt_state == MqttState::CONNACK_WAIT) {
-            OK_DETAIL("💬 MQTT connected");
+            OK_NOTE("MQTT connected");
             mqtt_state = MqttState::READY;
             mqtt_subs_todo = mqtt_subs;
           } else {
@@ -715,10 +734,10 @@ class CellModemClientDef : public CellModemClient {
         } else if (type == 7) {  // SUBACK
           if (mqtt_state != MqttState::SUBACK_WAIT) {
             COUNT_ERROR(mqtt_errors, "Unexp SUBACK: %s", abbr(in_buf).c_str());
-            ++status.mqtt_errors;
+            ++stat.mqtt_errors;
           } else if (err != 0) {
             COUNT_ERROR(mqtt_errors, "Sub fail: %s", abbr(in_buf).c_str());
-            ++status.mqtt_errors;
+            ++stat.mqtt_errors;
             mqtt_state = MqttState::NEEDS_DISCONNECT;  // reconnect, retry
           } else {
             mqtt_state = MqttState::READY;
@@ -764,9 +783,13 @@ class CellModemClientDef : public CellModemClient {
       if (eat_quoted(&rest, &v1) &&
           eat(&rest, ",") && eat_quoted(&rest, &v2) &&
           eat(&rest, ",") && eat_quoted(&rest, &v3)) {
-        status.versions[1] = v1.empty() ? "-" : v1;
-        status.versions[2] = v2.empty() ? "-" : v2;
-        status.versions[3] = v3.empty() ? "-" : v3;
+        stat.versions[1] = v1;
+        stat.versions[2] = v2;
+        stat.versions[3] = v3;
+        OK_NOTE(
+          "Radio: %.*s %.*s %.*s",
+          v1.size(), v1.data(), v2.size(), v2.data(), v3.size(), v3.data()
+        );
       }
       return;
     }
@@ -793,8 +816,8 @@ class CellModemClientDef : public CellModemClient {
           COUNT_ERROR(serial_errors, "Unexp OK (st=%d)", state);
           break;
         case State::AT_CGPADDR_WAIT:
-          status.ip_attached = false;  // +CGPADDR completed, no IPs found
-          status.ip_addr = 0;
+          stat.ip_attached = false;  // +CGPADDR completed, no IPs found
+          stat.ip_addr = 0;
           state = State::READY;
           break;
         case State::AT_CGMM_WAIT:
@@ -817,11 +840,11 @@ class CellModemClientDef : public CellModemClient {
     //
 
     if (state == State::AT_CGMM_WAIT) {
-      status.hardware = etl::trim_view_whitespace(rest);
+      stat.hardware = etl::trim_view_whitespace(rest);
       state = State::OK_WAIT;
       return;
     } else if (state == State::AT_CGMR_WAIT) {
-      status.versions[0] = etl::trim_view_whitespace(rest);
+      stat.versions[0] = etl::trim_view_whitespace(rest);
       state = State::OK_WAIT;
       return;
     }
@@ -836,7 +859,7 @@ class CellModemClientDef : public CellModemClient {
     if (p_end + 2 > in_buf.max_size()) {
       COUNT_ERROR(mqtt_errors, "MQTT message dropped (%db > %db max): %s",
                   p_end + 2, in_buf.max_size(), abbr(in_buf).c_str());
-      ++status.mqtt_errors;
+      ++stat.mqtt_errors;
       return;
     }
 

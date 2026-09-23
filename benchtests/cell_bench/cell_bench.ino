@@ -33,7 +33,8 @@ void loop() {
     if (delay > 1_ms) OK_NOTE("loop time %lld ms", raw_count<millis64>(delay));
   }
 
-  auto const status = cell_modem->poll();
+  cell_modem->poll();
+  const auto& status = cell_modem->status();
   uint8_t ip[4];
   for (int i = 0; i < 4; ++i) ip[i] = status.ip_addr >> (8 * (3 - i));
 
@@ -119,7 +120,8 @@ void loop() {
       etl::format_to(
         pub_buffer,
         "Hello #{}! resets=({}ha {}ra {}mq) errors=({}us {}se {}te {}mo {}mq)",
-        counter++, status.hard_resets, status.radio_resets, status.mqtt_resets,
+        counter++,
+        status.hard_resets, status.radio_resets, status.mqtt_resets,
         status.usage_errors, status.serial_errors, status.timeout_errors,
         status.modem_errors, status.mqtt_errors
       );

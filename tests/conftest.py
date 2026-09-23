@@ -60,7 +60,9 @@ def run_emulator(request):
             await emu.wait()
             print("⏹️ Emulator stopped")
 
-        assert not failures, f"Tests failed\n  {'\n  '.join(failures)}"
+        assert not failures, (
+            f"{len(failures)} failure(s)\n  {'\n  '.join(failures)}"
+        )
         return lines
 
     return run
