@@ -1,0 +1,4 @@
+(fp_lib_table
+	(version 7)
+	(lib (name "OK") (type "KiCad") (uri "/home/egnor/source/ok_pcb_parts/OK_Parts.pretty") (options "") (descr ""))
+)
