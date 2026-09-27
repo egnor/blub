@@ -1,13 +1,13 @@
 // Unit tests for config & utilities (config_lib/)
 
-#include "blub_clock_util.h"
-#include "blub_mqtt_config.h"
-
 #include <Arduino.h>
 #include <etl/chrono.h>
 #include <etl/format.h>
 #include <SHA256.h>
 
+#include <blub_clock_util.h>
+#include <blub_mqtt_config.h>
+#include <blub_warnings.h>
 #include <verifiers.h>
 
 char const* const ok_logging_config = "DETAIL";

@@ -7,6 +7,7 @@
 
 #include <blub_clock_util.h>
 #include <blub_mqtt_config.h>
+#include <blub_warnings.h>
 #include <cell_modem_client.h>
 
 using namespace etl::chrono;
@@ -76,7 +77,7 @@ void loop() {
       OK_NOTE("🔎 searching...");
     } else {
       OK_NOTE(
-        "📶 %s op:%d-%d cell:%04x-%08x-%d",
+        "📶 %s op:%d-%d cell:%04x-%08lx-%d",
         status.roaming ? "roam" : "home", status.op_mcc, status.op_mnc,
         status.cell_tac, status.cell_id, status.cell_phys_id
       );
@@ -143,13 +144,7 @@ void setup() {
   OK_NOTE("BLUB Cell Modem Bench Test");
   ok_dock_init_feather_v8();
   ok_dock_layout->line_printf(0, "\v\f10\1Cell Bench");
-  for (int c = 5; c >= 0; --c) {
-    OK_NOTE("⏳ Startup delay %dsec...", c);
-    ok_dock_layout->line_printf(1, "\f9Start %d...", c);
-    delay(1000);
-  }
 
-  pinMode(25, INPUT_PULLUP);
   Serial1.setTX(0);
   Serial1.setRX(1);
   Serial1.setFIFOSize(2048);

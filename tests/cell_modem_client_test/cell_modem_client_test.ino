@@ -6,6 +6,7 @@
 #include <etl/string.h>
 #include <etl/vector.h>
 
+#include <blub_warnings.h>
 #include <fake_serial.h>
 #include <verifiers.h>
 
@@ -95,17 +96,6 @@ static bool expect(
   return ok;
 }
 
-// Polls for a while, verifying the client sends nothing
-static bool expect_idle(
-  etl::unique_ptr<CellModemClient> const& cm, FakeSerial* serial, int ms
-) {
-  for (int t = 0; serial->write_buf.empty() && t < ms; t += 10) {
-    cm->poll();
-    delay(10);
-  }
-  return VERIFY_A_OP_B_STR(serial->write_buf, ==, "");
-}
-
 // Polls with the fake modem answering until stop(status) or wait_ms elapses
 static bool run_until(
   etl::unique_ptr<CellModemClient> const& cm, FakeSerial* serial, int wait_ms,
@@ -144,11 +134,6 @@ static void test_modem_client_setup() {
   auto const cm = make_cell_modem_client(&serial, EN_PIN, mqtt_config(), subs);
 
   // Verify the specific initialization and poll cycle
-  cm->poll();
-  VERIFY_A_OP_B_STR(serial.write_buf, ==, "");
-  VERIFY_A_OP_B_INT(gpio_get_dir(EN_PIN), ==, 1);
-  VERIFY_A_OP_B_INT(gpio_get_out_level(EN_PIN), ==, LOW);
-
   expect(cm, &serial, "\r+++\"\rAT\r");
   VERIFY_A_OP_B_INT(gpio_get_dir(EN_PIN), ==, 0);
   VERIFY_TRUE(gpio_is_pulled_up(EN_PIN));
@@ -172,7 +157,7 @@ static void test_modem_client_setup() {
   );
   expect(cm, &serial, "AT#XMQTTSUB=\"topic1\",0\r");
   expect(cm, &serial, "AT#XMQTTSUB=\"topic2\",0\r");
-  expect_idle(cm, &serial, 500);
+  expect(cm, &serial, "");
   VERIFY_TRUE(fake_connected);
 
   // Status after initial setup
@@ -207,7 +192,7 @@ static void test_modem_client_setup() {
   expect(cm, &serial, "AT%XMONITOR\r", 11000);
   expect(cm, &serial, "AT+CGPADDR\r");
   expect(cm, &serial, "AT#XMQTTCON?\r");
-  expect_idle(cm, &serial, 500);
+  expect(cm, &serial, "");
   VERIFY_TRUE(cm->status().mqtt_ready);
 }
 
@@ -224,6 +209,7 @@ static void test_cert_rewrite() {
 
   // Mismatched cert: radio off, erase, write
   expect(cm, &serial, "AT%CMNG=1,0,0\r");
+  OK_DETAIL("Simulating bad cert, expecting rewrite...");
   serial.read_buf = "%CMNG: 0,0,\"Wrong Hash\"\r\nOK\r\n";
   expect(cm, &serial, "AT+CFUN=4\r");
   expect(cm, &serial, "AT%CMNG=3,0,0\r");
@@ -237,7 +223,7 @@ static void test_cert_rewrite() {
   serial.write_buf.clear();
   serial.read_buf = "OK\r\n";
 
-  // Still wrong after the rewrite (empty slot): give up, don't loop on NVM
+  // Client doesn't loop to check again, but carries on
   expect(cm, &serial, "AT%XPDNCFG=1\r");
   expect(cm, &serial, "AT+CFUN=1\r");
 }
@@ -248,19 +234,30 @@ static void test_command_timeout() {
   auto const cm = make_cell_modem_client(&serial, EN_PIN, mqtt_config(), {});
 
   // Unanswered command: probe the modem again, then restart setup
-  expect(cm, &serial, "\r+++\"\rAT\r");
-  expect(cm, &serial, "AT+CGMM\r");
+  expect(cm, &serial, "\r+++\"\rAT\r");  // startup probe
+  expect(cm, &serial, "AT+CGMM\r");  // first startup message
+  OK_DETAIL("Suppressing reply, expecting timeout...");
   serial.read_buf = "";  // no reply
-  expect(cm, &serial, "\r+++\"\rAT\r", 11000);  // after 10s timeout
-  expect(cm, &serial, "AT+CGMM\r");
-  expect(cm, &serial, "AT+CGMR\r");
-  serial.read_buf = "";  // no reply
+  expect(cm, &serial, "\r+++\"\rAT\r", 11000);  // probe again after 10s
+  expect(cm, &serial, "AT+CGMM\r");  // issue first startup message again
+  expect(cm, &serial, "AT+CGMR\r");  // after recovery, proceeds
 
-  // Repeatedly unanswered probes: keeps trying (with faster timeout)
-  expect(cm, &serial, "\r+++\"\rAT\r", 11000);  // after 10s timeout
+  // Repeated unanswered probes: hard 
+  OK_DETAIL("Suppressing reply, expecting timeout...");
   serial.read_buf = "";  // no reply
-  expect(cm, &serial, "\r+++\"\rAT\r", 11000);  // after 10s timeout timeout
+  expect(cm, &serial, "\r+++\"\rAT\r", 11000);  // probe after timeout
+  OK_DETAIL("Suppressing reply, expecting timeout...");
   serial.read_buf = "";  // no reply
+  expect(cm, &serial, "\r+++\"\rAT\r", 11000);  // probe again after timeout
+  OK_DETAIL("Suppressing reply, expecting timeout and reset...");
+  serial.read_buf = "";  // no reply
+  expect(cm, &serial, "", 10000);  // give up and hard reset
+  VERIFY_A_OP_B_INT(gpio_get_dir(EN_PIN), ==, 1);
+  VERIFY_A_OP_B_INT(gpio_get_out_level(EN_PIN), ==, 0);
+
+  expect(cm, &serial, "\r+++\"\rAT\r");  // keep trying after reset
+  VERIFY_A_OP_B_INT(gpio_get_dir(EN_PIN), ==, 0);
+  VERIFY_TRUE(gpio_is_pulled_up(EN_PIN));
 }
 
 static void test_modem_restart() {
@@ -270,6 +267,7 @@ static void test_modem_restart() {
   if (!run_until_ready(cm, &serial)) return;
 
   // Unexpected "Ready": the modem rebooted, everything is invalid
+  OK_DETAIL("Simulating modem restart, expecting full re-setup...");
   serial.read_buf = "\xffReady\r\n";
   fake_connected = false;
   cm->poll();
@@ -306,13 +304,13 @@ static void test_mqtt_publish() {
 
   cm->poll();
   VERIFY_TRUE(cm->status().mqtt_publish_busy);  // after #XDATAMODE: 0
-  expect_idle(cm, &serial, 100);  // idle until PUBACK
+  expect(cm, &serial, "", 100);  // idle until PUBACK
 
   serial.read_buf = "#XMQTTEVT: 3,0\r\n";  // PUBACK
   cm->poll();
   VERIFY_TRUE(!cm->status().mqtt_publish_busy);  // after PUBACK
   VERIFY_TRUE(cm->status().mqtt_ready);
-  expect_idle(cm, &serial, 100);
+  expect(cm, &serial, "", 100);
 }
 
 static void test_mqtt_publish_rejected() {
@@ -324,6 +322,7 @@ static void test_mqtt_publish_rejected() {
   // Publish rejected: the session is gone (firmware reports the teardown)
   cm->publish({.topic = "test-topic", .payload = "test-payload"});
   expect(cm, &serial, "AT#XMQTTPUB=\"test-topic\",\"\",1,0,12\r");
+  OK_DETAIL("Rejecting MQTT publish, expecting reconnect...");
   serial.read_buf = "ERROR\r\n#XMQTTEVT: 1,-128\r\n";
   cm->poll();
   VERIFY_TRUE(!cm->status().mqtt_publish_busy);  // dropped
@@ -347,6 +346,7 @@ static void test_mqtt_publish_data_failed() {
   cm->publish({.topic = "test-topic", .payload = "test-payload"});
   expect(cm, &serial, "AT#XMQTTPUB=\"test-topic\",\"\",1,0,12\r");
   expect(cm, &serial, "test-payload");
+  OK_DETAIL("Rejecting MQTT data, expecting reconnect...");
   serial.read_buf =  "#XDATAMODE: -1\r\n";
   cm->poll();
   VERIFY_TRUE(!cm->status().mqtt_publish_busy);  // dropped
@@ -376,7 +376,7 @@ static void test_mqtt_receive() {
 
   cm->poll();  // consumes the trailing #XMQTTEVT
   VERIFY_TRUE(!cm->status().mqtt_receive_ready);
-  expect_idle(cm, &serial, 100);
+  expect(cm, &serial, "", 100);
 
   // Payloads may contain anything, including line breaks and quotes
   serial.read_buf = "#XMQTTMSG: 1,9\r\nt\r\n\"a\r\nOK\r\n\"\r\n";
@@ -385,7 +385,7 @@ static void test_mqtt_receive() {
   auto const m3 = cm->receive();
   VERIFY_A_OP_B_STR(m3.topic, ==, "t");
   VERIFY_A_OP_B_STR(m3.payload, ==, "\"a\r\nOK\r\n\"");
-  expect_idle(cm, &serial, 100);
+  expect(cm, &serial, "", 100);
 }
 
 static void test_mqtt_receive_oversize() {
@@ -395,6 +395,7 @@ static void test_mqtt_receive_oversize() {
   if (!run_until_ready(cm, &serial)) return;
 
   // Too big for the client's buffer: counted through, dropped, stays in sync
+  OK_DETAIL("Sending large MQTT message, expecting drop...");
   static etl::string<3100> big;
   big = "#XMQTTMSG: 4,3000\r\ntest\r\n";
   big.append(3000, 'x');
@@ -402,7 +403,7 @@ static void test_mqtt_receive_oversize() {
   serial.read_buf = big;
   cm->poll();
   VERIFY_TRUE(!cm->status().mqtt_receive_ready);
-  expect_idle(cm, &serial, 100);
+  expect(cm, &serial, "", 100);
   VERIFY_A_OP_B_INT(serial.read_buf.size(), ==, 0);  // everything consumed
 
   serial.read_buf = "#XMQTTMSG: 4,4\r\ntest\r\nabcd\r\n";
@@ -411,6 +412,7 @@ static void test_mqtt_receive_oversize() {
   VERIFY_A_OP_B_STR(cm->receive().payload, ==, "abcd");
 
   // Absurdly big: reset the modem rather than wait for it all
+  OK_DETAIL("Sending huge MQTT message, expecting reset...");
   serial.read_buf = "#XMQTTMSG: 4,70000\r\n";
   cm->poll();  // one poll to process the #XMQTTMSG
   cm->poll();  // another poll to initiate hard reset
@@ -425,6 +427,7 @@ static void test_mqtt_disconnect_event() {
   if (!run_until_ready(cm, &serial)) return;
 
   // Firmware-initiated disconnect: confirm with a poll, then reconnect
+  OK_DETAIL("Simulating MQTT disconnect, expecting reconnect...");
   serial.read_buf = "#XMQTTEVT: 1,-113\r\n";
   fake_connected = false;
   cm->poll();

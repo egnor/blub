@@ -13,7 +13,7 @@ profiles:
       - Embedded Template Library ETL (20.48.1)
       - Everyday Pixel Fonts (0.1)
       - OK Logging (0.9)
-      - OK Little Layout (0.4)
+      - OK Little Layout (0.5)
       - OK Micro Dock (0.3)
       - U8g2 (2.36.19)
       - dir: ../cell_modem_client_lib

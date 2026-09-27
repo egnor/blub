@@ -18,6 +18,7 @@
 
 #include <blub_clock_util.h>
 #include <blub_mqtt_config.h>
+#include <blub_warnings.h>
 #include <cell_modem_client.h>
 
 using namespace etl::chrono;
@@ -27,7 +28,7 @@ static const OkLoggingContext OK_CONTEXT("base_station");
 
 struct meter {
   int i2c_address;
-  etl::string<8> name;
+  char const* name;
   etl::optional<Adafruit_INA228> driver;
 };
 
@@ -57,15 +58,15 @@ static void update_screen() {
       auto const C = meter.driver->readDieTemp();
       ok_dock_layout->line_printf(
         ln++, "\f6%s\t%.1fV\t%.1fmA",
-        meter.name.c_str(), V, mA
+        meter.name, V, mA
       );
       OK_NOTE(
         "%s: %.1fV %.1fmA %.0fmW %.3fJ %.1fC",
-        meter.name.c_str(), V, mA, mW, J, C
+        meter.name, V, mA, mW, J, C
       );
     } else {
-      ok_dock_layout->line_printf(ln++, "\f6s\t-\t-", meter.name.c_str());
-      OK_NOTE("%s: missing at startup", meter.name.c_str());
+      ok_dock_layout->line_printf(ln++, "\f6%s\t-\t-", meter.name);
+      OK_NOTE("%s: missing at startup", meter.name);
     }
   }
 
@@ -81,7 +82,7 @@ static void update_screen() {
         !tud_mounted() ? " U" : Serial.dtr() ? " UMS" : " UM";
 
     if (!status.running) {
-      ok_dock_layout->line_printf(ln++, "\f6Rad-off%s", usb_stat);
+      ok_dock_layout->line_printf(ln++, "\f6Radio-off%s", usb_stat);
       OK_NOTE("Cell: Off");
     } else if (!status.registered) {
       ok_dock_layout->line_printf(ln++, "\f6Search%s", usb_stat);
@@ -185,11 +186,11 @@ void setup() {
   for (auto& meter : meters) {
     meter.driver.emplace();
     if (meter.driver->begin(meter.i2c_address)) {
-      OK_NOTE("\"%s\" meter @ 0x%x", meter.name.c_str(), meter.i2c_address);
+      OK_NOTE("\"%s\" meter @ 0x%x", meter.name, meter.i2c_address);
       meter.driver->setShunt(0.015, 10.0);
       meter.driver->setCurrentConversionTime(INA228_TIME_4120_us);
     } else {
-      OK_ERROR("No \"%s\" meter @ 0x%x", meter.name.c_str(), meter.i2c_address);
+      OK_ERROR("No \"%s\" meter @ 0x%x", meter.name, meter.i2c_address);
       meter.driver.reset();
     }
   }
