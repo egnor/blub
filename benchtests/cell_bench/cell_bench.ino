@@ -95,12 +95,13 @@ void loop() {
     } else {
       OK_NOTE("⭕ No IP attached");
     }
+#define C(n) status.counters[CellModemStatus::Counter::n]
     OK_NOTE(
       "🚩 resets=(%dha %dra %dmq) errors=(%dus %dse %dti %dmo %dmq)",
-      status.hard_resets, status.radio_resets, status.mqtt_resets,
-      status.usage_errors, status.serial_errors, status.timeout_errors,
-      status.modem_errors, status.mqtt_errors
+      C(HARD_RESET), C(RADIO_RESET), C(MQTT_RESET), C(USAGE_ERROR),
+      C(SERIAL_ERROR), C(TIMEOUT_ERROR), C(MODEM_ERROR), C(MQTT_ERROR)
     );
+#undef C
   }
 
   if (status.mqtt_receive_ready) {
@@ -117,14 +118,15 @@ void loop() {
   if (status.mqtt_ready && !status.mqtt_publish_busy) {
     if (loop_time > next_publish_time) {
       next_publish_time = loop_time + 1_s;
+#define C(n) status.counters[CellModemStatus::Counter::n]
       etl::format_to(
         pub_buffer,
         "Hello #{}! resets=({}ha {}ra {}mq) errors=({}us {}se {}te {}mo {}mq)",
         counter++,
-        status.hard_resets, status.radio_resets, status.mqtt_resets,
-        status.usage_errors, status.serial_errors, status.timeout_errors,
-        status.modem_errors, status.mqtt_errors
+        C(HARD_RESET), C(RADIO_RESET), C(MQTT_RESET), C(USAGE_ERROR),
+        C(SERIAL_ERROR), C(TIMEOUT_ERROR), C(MODEM_ERROR), C(MQTT_ERROR)
       );
+#undef C
       cell_modem->publish({"cell_bench/pub", pub_buffer});
     } else if (needs_echo) {
       needs_echo = false;

@@ -22,6 +22,7 @@ def run_emulator(request):
         compile = await create_subprocess_exec(
             "arduino-cli",
             "compile",
+            "--warnings=default",
             f"--build-path={build_dir}/work",
             f"--output-dir={build_dir}",
             cwd=str(sketch_dir),

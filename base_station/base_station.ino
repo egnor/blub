@@ -1,3 +1,6 @@
+// TODO: report IMEI/IMSI/ICCID (first, add the latter two to CellModemStatus)
+// TODO: report RP2040's reset reason
+
 #include <Arduino.h>
 #include <ArduinoJson.h>
 #include <Adafruit_INA228.h>
@@ -9,6 +12,7 @@
 #include <ok_little_layout.h>
 #include <ok_logging.h>
 #include <ok_micro_dock.h>
+#include <tusb.h>
 
 #include <blub_clock_util.h>
 #include <blub_mqtt_config.h>
@@ -35,7 +39,7 @@ static etl::array<meter, 4> meters{{
 static etl::unique_ptr<CellModemClient> cell_modem;
 static etl::string<512> pub_buffer;
 
-static steady_clock::time_point last_loop_time = {}; 
+static steady_clock::time_point last_loop_time = {};
 static steady_clock::time_point next_mqtt_time = {};
 static steady_clock::time_point next_screen_time = {};
 
@@ -69,35 +73,43 @@ static void update_screen() {
     ok_dock_layout->line_printf(ln++, "\f6No cell modem");
   } else {
     auto const& status = cell_modem->status();
+    char const* ip_stat =
+      !status.ip_attached ? "" : !status.mqtt_ready ? " IP" :
+        status.mqtt_publish_busy ? " MQ*" : " MQ";
+    char const* usb_stat =
+      !tud_connected() ? "" : tud_suspended() ? " US" :
+        !tud_mounted() ? " U" : Serial.dtr() ? " UMS" : " UM";
+
     if (!status.running) {
-      ok_dock_layout->line_printf(ln++, "\f6Radio off");
-      OK_NOTE("Cell radio: Off");
+      ok_dock_layout->line_printf(ln++, "\f6Rad-off%s", usb_stat);
+      OK_NOTE("Cell: Off");
     } else if (!status.registered) {
-      ok_dock_layout->line_printf(ln++, "\f6Searching");
-      OK_NOTE("Cell radio: Searching");
+      ok_dock_layout->line_printf(ln++, "\f6Search%s", usb_stat);
+      OK_NOTE("Cell: Searching");
     } else {
       ok_dock_layout->line_printf(
-        ln++, "\f6%+d/%+ddB %s%s",
-        status.radio_rsrp, status.radio_snr,
-        status.ip_attached ? " IP" : "",
-        status.mqtt_ready ? " MQ" : "",
-        status.mqtt_publish_busy ? "*" : ""
+        ln++, "\f6%+d %+ddB%s%s",
+        status.radio_rsrp, status.radio_snr, ip_stat, usb_stat
       );
       if (status.ip_attached) {
         uint8_t a[4];
         for (int i = 0; i < 4; ++i) a[i] = status.ip_addr >> (8 * (3 - i));
         OK_NOTE(
-          "Cell radio: %+ddBm/%+ddB %d.%d.%d.%d %s%s",
-          status.radio_rsrp, status.radio_snr, a[0], a[1], a[2], a[3],
-          status.mqtt_ready ? "+MQTT" : "!MQTT",
-          status.mqtt_publish_busy ? "*" : ""
+          "Cell: %+ddBm/%+ddB %d.%d.%d.%d%s",
+          status.radio_rsrp, status.radio_snr, a[0], a[1], a[2], a[3], ip_stat
         );
       } else {
-        OK_NOTE(
-          "Cell radio: %+ddBm/%+ddB !IP", status.radio_rsrp, status.radio_snr
-        );
+        OK_NOTE("Cell: %+ddBm/%+ddB !IP", status.radio_rsrp, status.radio_snr);
       }
     }
+
+    OK_NOTE(
+      "USB: %s%s%s%s",
+      tud_connected() ? "Conn" : "Disconn",
+      tud_suspended() ? " SUSP" : "",
+      tud_mounted() ? " mount" : "",
+      Serial.dtr() ? " serial+DTR" : ""
+    );
   }
 }
 
@@ -119,11 +131,19 @@ static void update_mqtt() {
     json_meter["C"] = std::round(meter.driver->readDieTemp() * 10) * 0.1;
   }
 
-  auto json_cell = doc["cell_radio"];
+  auto json_cell = doc["cell"];
   json_cell["op"] = status.op_mcc * 1000 + status.op_mnc;
   json_cell["tech"] = status.radio_tech;
   json_cell["sig"] = status.radio_rsrp;
   json_cell["snr"] = status.radio_snr;
+  auto json_cell_counts = json_cell["counts"];
+  copyArray(status.counters.data(), status.counters.size(), json_cell_counts);
+
+  auto json_usb = doc["usb"];
+  if (tud_connected()) json_usb["con"] = true;
+  if (tud_mounted()) json_usb["mnt"] = true;
+  if (tud_suspended()) json_usb["sus"] = true;
+  if (Serial.dtr()) json_usb["dtr"] = true;
 
   pub_buffer.clear();
   auto const len = serializeJson(doc, pub_buffer.data(), pub_buffer.max_size());
@@ -157,7 +177,8 @@ void loop() {
 }
 
 void setup() {
-  ok_serial_begin();
+  OkLoggingSerialOptions ser_opt = {.connect_wait_millis = 0};
+  ok_serial_begin(ser_opt);
   ok_dock_init_feather_v8();
   ok_dock_layout->line_printf(0, "\v\f8Power Station");
 

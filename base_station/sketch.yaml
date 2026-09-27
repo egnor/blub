@@ -12,7 +12,7 @@ profiles:
       - ArduinoJson (7.4.3)
       - Embedded Template Library ETL (20.48.1)
       - Everyday Pixel Fonts (0.1)
-      - OK Logging (0.8)
+      - OK Logging (0.9)
       - OK Little Layout (0.4)
       - OK Micro Dock (0.3)
       - U8g2 (2.36.19)

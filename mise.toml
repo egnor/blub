@@ -56,7 +56,7 @@ cum = { description = "compile + upload + monitor", depends = ["c", "um"] }
 [tasks.arduino-c]
 alias = "c"
 description = "Compile Arduino sketch"
-run = "arduino-cli compile"
+run = "arduino-cli compile --warnings=default"
 dir = "{{cwd}}"
 
 [tasks.arduino-u]

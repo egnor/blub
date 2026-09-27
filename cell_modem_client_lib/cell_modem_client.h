@@ -43,9 +43,11 @@ struct CellModemStatus {
   bool mqtt_receive_ready = false;
 
   // stats counters
-  int hard_resets = 0, radio_resets = 0, mqtt_resets = 0;
-  int usage_errors = 0, serial_errors = 0, timeout_errors = 0;
-  int modem_errors = 0, mqtt_errors = 0;
+  enum Counter {
+    HARD_RESET, RADIO_RESET, MQTT_RESET, USAGE_ERROR, SERIAL_ERROR,
+    TIMEOUT_ERROR, MODEM_ERROR, MQTT_ERROR, COUNTER_COUNT
+  };
+  etl::array<int, COUNTER_COUNT> counters = {};
 };
 
 class CellModemClient {
