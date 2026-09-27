@@ -1,6 +1,8 @@
 // TODO: report IMEI/IMSI/ICCID (first, add the latter two to CellModemStatus)
 // TODO: report RP2040's reset reason
 
+#pragma GCC diagnostic error "-Wformat=2"
+
 #include <Arduino.h>
 #include <ArduinoJson.h>
 #include <Adafruit_INA228.h>
@@ -25,7 +27,7 @@ static const OkLoggingContext OK_CONTEXT("base_station");
 
 struct meter {
   int i2c_address;
-  etl::string_view name;
+  etl::string<8> name;
   etl::optional<Adafruit_INA228> driver;
 };
 
@@ -54,18 +56,16 @@ static void update_screen() {
       auto const J = meter.driver->readEnergy();
       auto const C = meter.driver->readDieTemp();
       ok_dock_layout->line_printf(
-        ln++, "\f6%.*s\t%.1fV\t%.1fmA",
-        meter.name.size(), meter.name.data(), V, mA
+        ln++, "\f6%s\t%.1fV\t%.1fmA",
+        meter.name.c_str(), V, mA
       );
       OK_NOTE(
-        "%.*s: %.1fV %.1fmA %.0fmW %.3fJ %.1fC",
-        meter.name.size(), meter.name.data(), V, mA, mW, J, C
+        "%s: %.1fV %.1fmA %.0fmW %.3fJ %.1fC",
+        meter.name.c_str(), V, mA, mW, J, C
       );
     } else {
-      ok_dock_layout->line_printf(
-        ln++, "\f6.*s\t-\t-", meter.name.size(), meter.name.data()
-      );
-      OK_NOTE("%.*s: missing at startup", meter.name.size(), meter.name.data());
+      ok_dock_layout->line_printf(ln++, "\f6s\t-\t-", meter.name.c_str());
+      OK_NOTE("%s: missing at startup", meter.name.c_str());
     }
   }
 
@@ -185,11 +185,11 @@ void setup() {
   for (auto& meter : meters) {
     meter.driver.emplace();
     if (meter.driver->begin(meter.i2c_address)) {
-      OK_NOTE("\"%s\" meter at 0x%x", meter.name, meter.i2c_address);
+      OK_NOTE("\"%s\" meter @ 0x%x", meter.name.c_str(), meter.i2c_address);
       meter.driver->setShunt(0.015, 10.0);
       meter.driver->setCurrentConversionTime(INA228_TIME_4120_us);
     } else {
-      OK_ERROR("No \"%s\" meter at 0x%x", meter.name, meter.i2c_address);
+      OK_ERROR("No \"%s\" meter @ 0x%x", meter.name.c_str(), meter.i2c_address);
       meter.driver.reset();
     }
   }
