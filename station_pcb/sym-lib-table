@@ -1,4 +1,0 @@
-(sym_lib_table
-  (version 7)
-  (lib (name "OK_Parts")(type "KiCad")(uri "${KIPRJMOD}/../../ok_pcb_parts/OK_Parts.kicad_sym")(options "")(descr ""))
-)
