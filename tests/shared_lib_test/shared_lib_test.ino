@@ -1,4 +1,4 @@
-// Unit tests for config & utilities (config_lib/)
+// Unit tests for config & utilities (shared_lib/)
 
 #include <Arduino.h>
 #include <etl/chrono.h>
@@ -12,7 +12,7 @@
 
 char const* const ok_logging_config = "DETAIL";
 
-static OkLoggingContext OK_CONTEXT("config_lib_test");
+static OkLoggingContext OK_CONTEXT("shared_lib_test");
 
 static void test_blub_clock_util() {
   OK_NOTE("\n#TEST# test_blub_clock_util");

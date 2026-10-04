@@ -8,7 +8,7 @@ profiles:
         platform_index_url: https://github.com/earlephilhower/arduino-pico/releases/download/global/package_rp2040_index.json
     libraries:
       - dir: ../../cell_modem_client_lib
-      - dir: ../../config_lib
+      - dir: ../../shared_lib
       - dir: ../test_lib
       - Crypto (0.4.0)
       - Embedded Template Library ETL (20.48.1)

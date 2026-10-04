@@ -1,5 +1,7 @@
 // TODO: report IMEI/IMSI/ICCID (first, add the latter two to CellModemStatus)
 // TODO: report RP2040's reset reason
+// TODO: print A vs mA so numbers fit
+// TODO: log message reporting??
 
 #pragma GCC diagnostic error "-Wformat=2"
 

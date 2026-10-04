@@ -14,4 +14,4 @@ profiles:
       - OK Micro Dock (0.3)
       - U8g2 (2.36.19)
       - dir: ../../cell_modem_client_lib
-      - dir: ../../config_lib
+      - dir: ../../shared_lib
