@@ -3,8 +3,6 @@
 // TODO: print A vs mA so numbers fit
 // TODO: log message reporting??
 
-#pragma GCC diagnostic error "-Wformat=2"
-
 #include <Arduino.h>
 #include <ArduinoJson.h>
 #include <Adafruit_INA228.h>

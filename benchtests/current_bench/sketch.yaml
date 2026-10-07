@@ -1,0 +1,18 @@
+default_profile: default
+
+profiles:
+  default:
+    fqbn: rp2040:rp2040:adafruit_feather_rfm:dbglvl=All,dbgport=Serial,uploadmethod=picotool
+    platforms:
+      - platform: rp2040:rp2040 (6.0.0)
+        platform_index_url: https://github.com/earlephilhower/arduino-pico/releases/download/global/package_rp2040_index.json
+    libraries:
+      - Adafruit BusIO (1.17.4)
+      - Adafruit INA228 Library (3.0.0)
+      - Embedded Template Library ETL (20.48.1)
+      - Everyday Pixel Fonts (0.1)
+      - OK Logging (0.9)
+      - OK Little Layout (0.4)
+      - OK Micro Dock (0.3)
+      - U8g2 (2.36.19)
+      - dir: ../../shared_lib
