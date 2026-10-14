@@ -9,6 +9,7 @@ profiles:
     libraries:
       - Adafruit BusIO (1.17.4)
       - Adafruit INA228 Library (3.0.0)
+      - Adafruit INA237 and INA238 Library (1.0.3)
       - Embedded Template Library ETL (20.48.1)
       - Everyday Pixel Fonts (0.1)
       - OK Logging (0.9)

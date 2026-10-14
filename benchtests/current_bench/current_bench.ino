@@ -1,4 +1,4 @@
-#include <Adafruit_INA228.h>
+#include <Adafruit_INA237.h>
 #include <Arduino.h>
 #include <etl/chrono.h>
 #include <etl/format.h>
@@ -20,7 +20,7 @@ static const OkLoggingContext OK_CONTEXT("current_bench");
 
 struct sensor {
   int i2c_address;
-  Adafruit_INA228 ina;
+  Adafruit_INA237 ina;
 };
 
 static etl::vector<sensor, 4> sensors;
@@ -35,24 +35,36 @@ void loop() {
     auto const delay = loop_time - last_loop_time;
     if (delay > 1_ms) OK_NOTE("loop time %lld ms", raw_count<millis64>(delay));
   }
-
   last_loop_time = loop_time;
+
+  if (loop_time > next_print_time) {
+    next_print_time = loop_time + 500_ms;
+    OK_NOTE("\n%d sensors", sensors.size());
+    for (auto &s : sensors) {
+      float const mA = s.ina.readCurrent();
+      float const V = s.ina.readBusVoltage();
+      OK_NOTE("INA237 0x%02X: %.3f mA, %.3f V", s.i2c_address, mA, V);
+    }
+  }
 }
 
 void setup() {
   ok_serial_begin();
   OK_NOTE("BLUB Current Sensor Bench Test");
   ok_dock_init_feather_v8();
-  ok_dock_layout->line_printf(0, "\v\f10\1Current Bench");
+  ok_dock_layout->line_printf(0, "\v\f7\1Current Bench");
 
   for (int offset = 0; offset < 16 && !sensors.full(); ++offset) {
-    int const i2c_address = INA228_I2CADDR_DEFAULT + offset;
+    int const i2c_address = INA237_I2CADDR_DEFAULT + offset;
     sensors.emplace_back();
     sensors.back().i2c_address = i2c_address;
     if (sensors.back().ina.begin(i2c_address)) {
-      OK_NOTE("Found INA228 at 0x%02X", i2c_address);
+      sensors.back().ina.setShunt(0.010f, 15.0);
+      sensors.back().ina.setCurrentConversionTime(INA2XX_TIME_4120_us);
+      OK_NOTE("Found INA237 at 0x%02X", i2c_address);
+      ok_dock_layout->line_printf(sensors.size(), "\f70x%02x", i2c_address);
     } else {
-      OK_NOTE("No INA228 at 0x%02X", i2c_address);
+      OK_NOTE("No INA237 at 0x%02X", i2c_address);
       sensors.pop_back();
     }
   }

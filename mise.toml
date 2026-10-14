@@ -1,13 +1,12 @@
 [tools]
 arduino = "1.5.1"
-# runs the RP2040 emulator, see tests/emulator/README.md
-node = "latest"
+node = "24.13.1"
 python = "3.12"
 uv = "0.12"
 "github:circuitdojo/modem_updater" = { bin = "modem_updater", version = "0.1.5" }
+"github:raspberrypi/pico-sdk-tools" = { version = "2.3.1" }
 "github:probe-rs/probe-rs" = { matching = "probe-rs-tools", version = "0.32" }
 "github:EdJoPaTo/mqttui" = "0.24.0"
-"pipx:grip" = "4.6"
 
 [tools."http:nrfutil"]
 version = "0.0"
@@ -27,7 +26,7 @@ UV_PROJECT_ENVIRONMENT = "{{config_root}}/dev.tmp/python_venv"
 
 # Arduino
 ARDUINO_DIRECTORIES_DATA = "{{config_root}}/dev.tmp/arduino"
-ARDUINO_LIBRARY_ENABLE_UNSAFE_INSTALL = "true"
+ARDUINO_SKETCH_ALWAYS_EXPORT_BINARIES = "true"
 
 # Nordic tools for cell modem build, see cell_modem_firmware/README.md
 _.path = { path = "{{config_root}}/dev.tmp/nordic/bin" }
@@ -62,14 +61,14 @@ dir = "{{cwd}}"
 [tasks.arduino-u]
 alias = "u"
 description = "Upload Arduino sketch"
-run = 'arduino-cli upload'
+run = "picotool load build/*/*.elf -f -x"
 dir = "{{cwd}}"
 wait_for = "c"
 
 [tasks.arduino-m]
 alias = "m"
 description = "Monitor Arduino sketch"
-run = 'okterm RP2040'
+run = "okterm -s5 RP2040"
 dir = "{{cwd}}"
 wait_for = "u"
 raw = true

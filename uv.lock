@@ -38,7 +38,7 @@ requires-dist = [
     { name = "exif", specifier = "~=1.6.1" },
     { name = "ok-logging-setup", specifier = "~=0.17" },
     { name = "ok-serial", specifier = "~=0.8" },
-    { name = "ok-serial-terminal", specifier = "~=0.5" },
+    { name = "ok-serial-terminal", specifier = "~=0.6" },
     { name = "ok-subprocess-runner", specifier = "~=0.5" },
     { name = "pint", specifier = "~=0.24" },
     { name = "pytest", specifier = ">=9.1.1" },
@@ -224,16 +224,16 @@ wheels = [
 
 [[package]]
 name = "ok-serial-terminal"
-version = "0.5"
+version = "0.6"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "click" },
     { name = "ok-logging-setup" },
     { name = "ok-serial" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/2d/35/157e45010711d77cc013edcee632e0a4894aa767b9aae71e7f8445c26017/ok_serial_terminal-0.5.tar.gz", hash = "sha256:141ceee19a59b636b550401b42afe14bdaefbb697ec23f53f58eee0eacb18e40", size = 21190, upload-time = "2026-09-27T00:16:33.34Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/08/09/c3c7853e5918792f16caf3edad857ecfd02206c6e27c2824fc9133802248/ok_serial_terminal-0.6.tar.gz", hash = "sha256:9a260642dab4d20125e63c6bef1eb24894ae367228bab36364dc07ba06e6e5b9", size = 21190, upload-time = "2026-10-14T04:50:33.875Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/ab/7e/696a971667fbf99fa95a6b99601c07c75a0a04bcbf7bd0d27c4cc6cd16f9/ok_serial_terminal-0.5-py3-none-any.whl", hash = "sha256:10551c080dd35220d397902f7a8bf900f3d01a2620e9847dd07fbaa869d319d5", size = 24413, upload-time = "2026-09-27T00:16:34.545Z" },
+    { url = "https://files.pythonhosted.org/packages/cb/93/4347e6f1c063daf4072c0b093c334cc531eb4863b4f7be929f9732372172/ok_serial_terminal-0.6-py3-none-any.whl", hash = "sha256:9387a522cc21d59b3a39caca8395dc8a57901dabc2ec0abc862adfecede59050", size = 24416, upload-time = "2026-10-14T04:50:35.001Z" },
 ]
 
 [[package]]

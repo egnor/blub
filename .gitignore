@@ -15,6 +15,9 @@ __MACOSX/
 *.tmp
 .vscode/
 
+# Arduino
+build/
+
 # Node
 node_modules/
 
