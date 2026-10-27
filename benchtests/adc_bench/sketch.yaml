@@ -8,6 +8,12 @@ profiles:
         platform_index_url: https://github.com/earlephilhower/arduino-pico/releases/download/global/package_rp2040_index.json
     libraries:
       - OK Logging (0.9)
-      - Adafruit ADS1X15 (2.5.0)
-      - Adafruit BusIO (1.17.2)
+      - Adafruit ADS1X15 (2.6.2)
+      - Adafruit BusIO (1.17.4)
+      - Embedded Template Library ETL (20.48.1)
+      - Everyday Pixel Fonts (0.1)
+      - OK Little Layout (0.5)
+      - OK Logging (0.9)
+      - OK Micro Dock (0.3)
       - U8g2 (2.36.19)
+      - dir: ../../shared_lib

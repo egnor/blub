@@ -3,15 +3,12 @@
 #include <etl/chrono.h>
 #include <etl/format.h>
 #include <etl/vector.h>
-#include <ok_logging.h>
 #include <ok_little_layout.h>
+#include <ok_logging.h>
 #include <ok_micro_dock.h>
 
 #include <blub_clock_util.h>
 #include <blub_warnings.h>
-
-using namespace etl::chrono;
-using namespace etl::chrono_literals;
 
 using namespace etl::chrono;
 using namespace etl::chrono_literals;
