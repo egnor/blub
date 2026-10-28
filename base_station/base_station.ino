@@ -26,13 +26,13 @@ using namespace etl::chrono_literals;
 
 static const OkLoggingContext OK_CONTEXT("base_station");
 
-struct meter {
+struct Meter {
   int i2c_address;
   char const* name;
   etl::optional<Adafruit_INA228> driver;
 };
 
-static etl::array<meter, 4> meters{{
+static etl::array<Meter, 4> meters{{
   {INA228_I2CADDR_DEFAULT, "Out"},
   {INA228_I2CADDR_DEFAULT + 1, "PPT"},
   {INA228_I2CADDR_DEFAULT + 4, "Panel"},

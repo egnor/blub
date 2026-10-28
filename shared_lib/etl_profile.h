@@ -9,6 +9,8 @@
 #define ETL_USE_OK_LOGGING 1
 #define ETL_VERBOSE_ERRORS 1
 
-// see rp2040_etl_clock.cpp, which uses time_us_64()
-#define ETL_CHRONO_STEADY_CLOCK_DURATION  \
+#if defined(ARDUINO_ARCH_RP2040)
+  // see rp2040_etl_clock.cpp, which uses time_us_64()
+  #define ETL_CHRONO_STEADY_CLOCK_DURATION  \
     etl::chrono::duration<int64_t, etl::micro>
+#endif
