@@ -20,6 +20,7 @@ dependencies = [
   "pytest>=9.1.1",
   "pytest-asyncio>=1.4.0",
   "aiomqtt>=3.0.0a1",
+  "msgspec>=0.22.0",
 ]
 
 [tool.pytest]

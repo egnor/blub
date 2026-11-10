@@ -1,7 +1,9 @@
 #include <Adafruit_ADS1X15.h>
+#include <algorithm>
 #include <Arduino.h>
 #include <cmath>
 #include <etl/array.h>
+#include <etl/vector.h>
 #include <ok_little_layout.h>
 #include <ok_logging.h>
 #include <ok_micro_dock.h>
@@ -13,24 +15,37 @@
 using namespace etl::chrono;
 using namespace etl::chrono_literals;
 
-static const OkLoggingContext OK_CONTEXT("squish_bench");
+static OkLoggingContext const OK_CONTEXT("squish_bench");
+
+static float constexpr STEP_ON_GAUSS = 4.0f;
+static float constexpr STEP_OFF_GAUSS = 2.0f;
+static float constexpr BASELINE_MIX = 0.01f;  // updated 10ms
 
 struct Squish {
-  int adc;
-  int input;
-  float last_G;
+  int reader;
+  int channel;
+  float volts = -1.0f;
+  float gauss = -1.0f;
+  float baseline = -1.0f;
+  bool step = false;
+  steady_clock::time_point step_off_time = {};
 };
 
-static etl::array<Adafruit_ADS1115, 2> adcs;
+struct Reader {
+  int address;
+  etl::array<int, 4> channels = {-1, -1, -1, -1};
+  Adafruit_ADS1115 adc;
+  int active_channel = -1;
+};
 
-static etl::array<Squish, 6> squishes{{
-  {0, 0},
-  {0, 1},
-  {0, 2},
-  {0, 3},
-  {1, 0},
-  {1, 1},
-}};
+static etl::array readers{ Reader{0x48}, Reader{0x49} };
+
+static etl::array squishes{
+  Squish{0, 0}, // Squish{0, 1}, Squish{0, 2},
+  // Squish{1, 0}, Squish{1, 1}, Squish{1, 2},
+};
+
+int vcc_reader = 1, vcc_channel = 3;
 
 static steady_clock::time_point last_loop_time = {};
 static steady_clock::time_point next_sensor_time = {};
@@ -44,19 +59,61 @@ void loop() {
   }
   last_loop_time = loop_time;
 
+  for (auto& r : readers) {
+    if (r.active_channel >= 0) {
+      if (!r.adc.conversionComplete()) continue;
+      r.channels[r.active_channel] = r.adc.getLastConversionResults();
+    }
+    r.active_channel = (r.active_channel + 1) % r.channels.size();
+    r.adc.startADCReading(MUX_BY_CHANNEL[r.active_channel], false);
+  }
+
+  bool step_change = false;
   if (loop_time > next_sensor_time) {
-    next_sensor_time = loop_time + 10_ms;
-    for (auto& squish : squishes) {
-      auto const count = adcs[squish.adc].readADC_SingleEnded(squish.input);
-      auto const gauss = std::abs(count * 187.5e-6f - 1.65f) * (1.0f / 4.0e-3f);
-      squish.last_G = gauss;
+    next_sensor_time = std::max(loop_time + 5_ms, next_sensor_time + 10_ms);
+    for (auto& sq : squishes) {
+      auto const counts = readers[sq.reader].channels[sq.channel];
+      if (counts < 0) continue;
+      sq.volts = counts * 187.5e-6f;
+      sq.gauss = std::abs(sq.volts - 1.65f) * (1.0f / 4.0e-3f);
+      if (sq.baseline < 0.0f) {
+        OK_NOTE("ADC%d.%d init %.1fG", sq.reader, sq.channel, sq.gauss);
+        sq.baseline = sq.gauss;
+      }
+      if (sq.step && loop_time > sq.step_off_time + 10_s) {
+        OK_ERROR(
+          "ADC%d.%d timeout (%.1fs) %.1fG", sq.reader, sq.channel,
+          raw_count<secf>(loop_time - sq.step_off_time), sq.gauss
+        );
+        sq.baseline = sq.gauss;
+      }
+      auto const step_offset = sq.step ? STEP_OFF_GAUSS : STEP_ON_GAUSS;
+      auto const step = sq.gauss >= sq.baseline + step_offset;
+      if (!step) {
+        auto constexpr f = BASELINE_MIX;
+        sq.baseline = (1.0f - f) * sq.baseline + f * sq.gauss;
+        sq.step_off_time = loop_time;
+      }
+      if (step != sq.step) {
+        sq.step = step;
+        step_change = true;
+      }
     }
   }
 
-  if (loop_time > next_print_time) {
-    next_print_time = loop_time + 250_ms;
-    for (auto& squish : squishes) {
-      Serial.printf(" %6.2f", squish.last_G);
+  if (step_change || loop_time > next_print_time) {
+    next_print_time = loop_time + 100_ms;
+    float const vcc = readers[vcc_reader].channels[vcc_channel] * 187.5e-6f;
+    Serial.printf("%.1f|%4.2fV|", raw_count<secf>(loop_time), vcc);
+    for (auto& sq : squishes) {
+      if (sq.gauss < 0.0f) {
+        Serial.printf("- ");
+      } else {
+        Serial.printf(
+          "%5.3fV %4.1fG %+5.1f%s ",
+          sq.volts, sq.baseline, sq.gauss - sq.baseline, sq.step ? "👣" : "　"
+        );
+      }
     }
     Serial.println();
   }
@@ -68,12 +125,12 @@ void setup() {
   ok_dock_init_feather_v8();
   ok_dock_layout->line_printf(0, "\v\f7\1Squish Bench");
 
-  for (int a = 0; a < adcs.size(); ++a) {
-    int const addr = 0x48 + a;
-    OK_NOTE("ADS1115[0x%02x] starting", addr);
-    while (!adcs[a].begin(addr)) {
-      OK_ERROR("ADS1115[0x%02x] initialization failed...", addr);
+  for (auto& r : readers) {
+    OK_NOTE("ADS1115[0x%02x] starting", r.address);
+    while (!r.adc.begin(r.address)) {
+      OK_ERROR("ADS1115[0x%02x] initialization failed...", r.address);
       delay(500);
     }
+    r.adc.setDataRate(RATE_ADS1115_475SPS);
   }
 }

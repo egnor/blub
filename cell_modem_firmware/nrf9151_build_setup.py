@@ -16,13 +16,11 @@ import logging
 import ok_logging_setup
 import os
 import tomli_w
-from ok_subprocess_runner import run, stdout_text, stdout_json, SubprocessRunner
+from ok_subprocess_runner import run, stdout_json, SubprocessRunner
 from pathlib import Path
 from subprocess import CalledProcessError
 
-SDK_VERSION = (
-    "v3.4.1-rc1"  # toolchain bundle; must suit "nrf" pinned via west.yml
-)
+SDK_VERSION = "v3.4.1-rc1"  # toolchain bundle for "nrf" pinned via west.yml
 SDK_MANAGER_VERSION = "1.16.1"  # nrfutil plugin (nrfutil itself is unpinnable)
 BUILD_BOARD = "circuitdojo_feather_nrf9151/nrf9151/ns"
 
