@@ -1,6 +1,7 @@
 #include <Adafruit_ADS1X15.h>
 #include <algorithm>
 #include <Arduino.h>
+#include <ArduinoJson.h>
 #include <cmath>
 #include <etl/array.h>
 #include <etl/vector.h>
@@ -41,8 +42,8 @@ struct Reader {
 static etl::array readers{ Reader{0x48}, Reader{0x49} };
 
 static etl::array squishes{
-  Squish{0, 0}, // Squish{0, 1}, Squish{0, 2},
-  // Squish{1, 0}, Squish{1, 1}, Squish{1, 2},
+  Squish{0, 0}, Squish{0, 1}, Squish{0, 2},
+  Squish{1, 0}, Squish{1, 1}, Squish{1, 2},
 };
 
 int vcc_reader = 1, vcc_channel = 3;
@@ -55,7 +56,7 @@ void loop() {
   auto const loop_time = steady_clock::now();
   if (last_loop_time > steady_clock::time_point{}) {
     auto const delay = loop_time - last_loop_time;
-    if (delay > 5_ms) OK_NOTE("loop time %lld ms", raw_count<millis64>(delay));
+    if (delay > 5_ms) OK_ERROR("loop time %lld ms", raw_count<millis64>(delay));
   }
   last_loop_time = loop_time;
 
@@ -77,12 +78,12 @@ void loop() {
       sq.volts = counts * 187.5e-6f;
       sq.gauss = std::abs(sq.volts - 1.65f) * (1.0f / 4.0e-3f);
       if (sq.baseline < 0.0f) {
-        OK_NOTE("ADC%d.%d init %.1fG", sq.reader, sq.channel, sq.gauss);
+        OK_NOTE("ADC%d.%d base init %.1fG", sq.reader, sq.channel, sq.gauss);
         sq.baseline = sq.gauss;
       }
       if (sq.step && loop_time > sq.step_off_time + 10_s) {
         OK_ERROR(
-          "ADC%d.%d timeout (%.1fs) %.1fG", sq.reader, sq.channel,
+          "ADC%d.%d step timeout (%.1fs) %.1fG", sq.reader, sq.channel,
           raw_count<secf>(loop_time - sq.step_off_time), sq.gauss
         );
         sq.baseline = sq.gauss;
@@ -103,18 +104,24 @@ void loop() {
 
   if (step_change || loop_time > next_print_time) {
     next_print_time = loop_time + 100_ms;
-    float const vcc = readers[vcc_reader].channels[vcc_channel] * 187.5e-6f;
-    Serial.printf("%.1f|%4.2fV|", raw_count<secf>(loop_time), vcc);
+
+    JsonDocument doc;
+    doc["t"] = raw_count<secf>(loop_time);
+    doc["vcc"] = readers[vcc_reader].channels[vcc_channel] * 187.5e-6f;
+    auto sq_outs = doc["sq"].to<JsonArray>();
     for (auto& sq : squishes) {
-      if (sq.gauss < 0.0f) {
-        Serial.printf("- ");
-      } else {
-        Serial.printf(
-          "%5.3fV %4.1fG %+5.1f%s ",
-          sq.volts, sq.baseline, sq.gauss - sq.baseline, sq.step ? "👣" : "　"
-        );
+      auto sq_out = sq_outs.add<JsonObject>();
+      if (sq.gauss >= 0.0f) {
+        sq_out["V"] = sq.volts;
+        sq_out["G"] = sq.gauss;
+        sq_out["bG"] = sq.baseline;
+        sq_out["dG"] = sq.gauss - sq.baseline;
+        sq_out["s"] = sq.step;
       }
     }
+
+    Serial.print("$/squish_bench|");
+    serializeJson(doc, Serial);
     Serial.println();
   }
 }

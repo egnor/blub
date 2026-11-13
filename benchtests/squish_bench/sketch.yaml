@@ -10,6 +10,7 @@ profiles:
       - OK Logging (0.9)
       - Adafruit ADS1X15 (2.6.2)
       - Adafruit BusIO (1.17.4)
+      - ArduinoJson (7.4.3)
       - Embedded Template Library ETL (20.48.1)
       - Everyday Pixel Fonts (0.1)
       - OK Little Layout (0.5)

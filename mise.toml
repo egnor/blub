@@ -2,7 +2,7 @@
 arduino = "1.5.1"
 node = "24.13.1"
 python = "3.12"
-uv = "0.12"
+uv = "0.13"
 "github:circuitdojo/modem_updater" = { bin = "modem_updater", version = "0.1.5" }
 "github:raspberrypi/pico-sdk-tools" = { version = "2.3.1" }
 "github:probe-rs/probe-rs" = { matching = "probe-rs-tools", version = "0.32" }
