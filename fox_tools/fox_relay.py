@@ -5,21 +5,21 @@ Relays messages from embedded serial port output to Foxglove Studio.
 
 import argparse
 import contextlib
-import foxglove
-import foxglove.channels
-import foxglove.mcap
-import foxglove.messages
 import json
 import logging
-import msgspec
-import ok_logging_setup
-import ok_serial
 import os
 import pathlib
 import re
 import signal
 import time
 
+import foxglove
+import foxglove.channels
+import foxglove.mcap
+import foxglove.messages
+import msgspec
+import ok_logging_setup
+import ok_serial
 
 MAX_LINE_LENGTH = 65536
 
@@ -134,7 +134,7 @@ def run_connection(
         in_read = conn.read_sync(timeout=0.5)
         relay_status.byte_count += len(in_read)
         while (newline_pos := in_read.find(b"\n")) >= 0:
-            handle_line(fox_server, in_buffer + in_read[:newline_pos])
+            handle_line(fox_server, bytes(in_buffer + in_read[:newline_pos]))
             in_buffer, in_read = bytearray(), in_read[newline_pos + 1 :]
         in_buffer += in_read
         del in_buffer[:-MAX_LINE_LENGTH]

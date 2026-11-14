@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-import aiomqtt
 import asyncio
 import logging
-import ok_logging_setup
 import ssl
+
+import aiomqtt
+import ok_logging_setup
 
 
 async def run_spam():

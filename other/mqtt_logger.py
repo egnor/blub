@@ -1,17 +1,18 @@
 #!/usr/bin/env python3
+# type: ignore
 
 import argparse
 import base64
 import datetime
-import paho.mqtt.client
 import json
 import logging
 import os
-from pathlib import Path
 import signal
 import time
 import urllib.parse
+from pathlib import Path
 
+import paho.mqtt.client
 
 urllib.parse.uses_relative.extend(["mqtt", "mqtts"])
 urllib.parse.uses_netloc.extend(["mqtt", "mqtts"])
@@ -56,7 +57,7 @@ class LogWriter:
         filepath = str(self.dir / f"{filedate}.log")
         if not self.file or self.file.name != filepath:
             self.file.close() if self.file else None
-            self.file = open(filepath, "a")
+            self.file = open(filepath, "a")  # ruff: ignore[SIM115]
 
         log_json = {
             "ts": dt.isoformat(),

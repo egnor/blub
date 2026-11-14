@@ -1,7 +1,8 @@
-import pytest
-from asyncio import create_subprocess_exec, TaskGroup, wait_for
+from asyncio import TaskGroup, create_subprocess_exec, wait_for
 from asyncio.subprocess import PIPE
 from pathlib import Path
+
+import pytest
 
 EMULATOR_PATH = Path(__file__).parent / "emulator" / "emulate_rp2040.js"
 
@@ -38,7 +39,9 @@ def run_emulator(request):
             failures: list[str] = []
             async with TaskGroup() as tasks:
                 tasks.create_task(wait_for(emu.wait(), timeout=timeout))
+                # ruff: ignore[ASYNC230]
                 with open(build_dir / "output.txt", "wb", buffering=0) as log:
+                    assert emu.stdout
                     async for line in emu.stdout:
                         log.write(line)
                         print(text := line.decode().rstrip())

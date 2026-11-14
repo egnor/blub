@@ -3,9 +3,9 @@
 import argparse
 import bisect
 import pathlib
-import piexif
-
 from datetime import datetime
+
+import piexif
 
 EXIF_TIME_FORMAT = "%Y:%m:%d %H:%M:%S"
 
@@ -21,7 +21,7 @@ print("READING")
 for dir_name in args.dir:
     print(f"📁 {dir_name}")
     for file_path in sorted(pathlib.Path(dir_name).iterdir()):
-        if file_path.is_dir() or file_path.suffix.lower() in ('.dng', ):
+        if file_path.is_dir() or file_path.suffix.lower() in (".dng",):
             continue
 
         try:
@@ -34,7 +34,7 @@ for dir_name in args.dir:
         exif["0th"].pop(piexif.ImageIFD.AsShotNeutral, None)
         exif_time = exif["0th"].get(piexif.ImageIFD.DateTime, b"").decode()
         pic_time = exif_time and datetime.strptime(exif_time, EXIF_TIME_FORMAT)
-        pic_stamp = pic_time and pic_time.timestamp()
+        pic_stamp = pic_time.timestamp() if pic_time else None
 
         gps_data = {}
         for coord in ("Latitude", "Longitude", "Altitude"):
@@ -67,13 +67,13 @@ elif not nogps_timestamp:
     print("✨ NO NON-GPS-TAGGED IMAGES")
 else:
     print("UPDATING")
-    timestamps = list(sorted(timestamp_gps.keys()))
+    timestamps = sorted(timestamp_gps.keys())
     for nogps_path, nogps_stamp in sorted(nogps_timestamp.items()):
         index = bisect.bisect_left(timestamps, nogps_stamp)
         match = timestamps[max(index - 1, 0)]
-        if index < len(timestamps):
-            if abs(nogps_stamp - timestamps[index]) < abs(nogps_stamp - match):
-                match = timestamps[index]
+        diff = abs(nogps_stamp - timestamps[index])
+        if index < len(timestamps) and diff < abs(nogps_stamp - match):
+            match = timestamps[index]
         offset = abs(nogps_stamp - match)
         if offset > args.offset:
             print(f"⌛ no match ({offset:.1f}s) {nogps_path}")

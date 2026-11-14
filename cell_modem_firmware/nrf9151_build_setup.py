@@ -13,12 +13,14 @@ that adds board-specific config overrides.
 import argparse
 import configparser
 import logging
-import ok_logging_setup
 import os
-import tomli_w
-from ok_subprocess_runner import run, stdout_json, SubprocessRunner
 from pathlib import Path
 from subprocess import CalledProcessError
+from typing import cast
+
+import ok_logging_setup
+import tomli_w
+from ok_subprocess_runner import SubprocessRunner, run, stdout_json
 
 SDK_VERSION = "v3.4.1-rc1"  # toolchain bundle for "nrf" pinned via west.yml
 SDK_MANAGER_VERSION = "1.16.1"  # nrfutil plugin (nrfutil itself is unpinnable)
@@ -34,6 +36,7 @@ def main():
 
     if not (nrfutil_home_env := os.environ.get("NRFUTIL_HOME")):
         ok_logging_setup.exit("$NRFUTIL_HOME not set (check mise?)")
+        assert False
 
     script_dir = Path(__file__).parent.resolve()
     install_dir = Path(nrfutil_home_env).resolve()
@@ -41,8 +44,9 @@ def main():
     manifest_link = workspace_dir / script_dir.name
 
     logging.info("\n▶️ nRF Connect SDK toolchain")
-    nrfutil_list = stdout_json("nrfutil", "list", "--json")["data"]["commands"]
-    installed = {c["command"]: c["installed_version"] for c in nrfutil_list}
+    nrfutil_list = cast(dict, stdout_json("nrfutil", "list", "--json"))
+    nrfutil_commands = nrfutil_list["data"]["commands"]
+    installed = {c["command"]: c["installed_version"] for c in nrfutil_commands}
     if installed.get("sdk-manager") != SDK_MANAGER_VERSION:
         pinned_sdk_manager = f"sdk-manager={SDK_MANAGER_VERSION}"
         run("nrfutil", "install", "--force", pinned_sdk_manager)
@@ -71,12 +75,13 @@ def main():
 
     env_args = ("nrfutil", "sdk-manager", "toolchain", "env")
     env_flags = (f"--ncs-version={SDK_VERSION}", "--json")
-    sdk_vars = stdout_json(*env_args, *env_flags)["data"]["env_variables"]
+    nrfutil_env = cast(dict, stdout_json(*env_args, *env_flags))
+    sdk_vars = nrfutil_env["data"]["env_variables"]
     sdk_env = {var["key"]: var["value"] for var in sdk_vars}
     sdk_paths = sdk_env.pop("PATH").split(":")
     sys_paths = set(os.environ.get("PATH", "").split(":"))
 
-    mise_t = {"env": sdk_env}
+    mise_t: dict[str, dict | list] = {"env": sdk_env}
     mise_t["env"]["_"] = {"path": [p for p in sdk_paths if p not in sys_paths]}
     mise_t["env"]["UV_PROJECT_ENVIRONMENT"] = False
     mise_t["settings"] = {"disable_tools": ["python", "uv"]}

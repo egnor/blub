@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
 
-import debian.debfile
 import logging
 import pathlib
-import ok_logging_setup
 import re
 import shutil
 import tarfile
 import zipfile
+
+import debian.debfile
+import ok_logging_setup
 
 ZIPFILE_RE = re.compile(r"^.*/Linux[^/]*MediaSDK.*[.]zip$")
 TARFILE_RE = re.compile("^[^_.].*/MediaSDK[^/]*Linux[.]tar.*[.].*z")
@@ -16,7 +17,8 @@ DEBFILE_RE = re.compile("^[^_.].*/[^/]*[.]deb")
 
 SCRIPT_DIR = pathlib.Path(__file__).parent
 SDK_DIR = SCRIPT_DIR / "insta360_sdk.tmp"
-DEB_FILES_DIR = SDK_DIR / "deb_files" 
+DEB_FILES_DIR = SDK_DIR / "deb_files"
+
 
 def extract_zip_tar():
     if SDK_DIR.is_dir():
@@ -32,12 +34,16 @@ def extract_zip_tar():
     dir_files = list(SCRIPT_DIR.iterdir())
     dir_zips = [d for d in dir_files if ZIPFILE_RE.match(str(d))]
     if len(dir_zips) != 1:
-        ok_logging_setup.exit("\n".join([
-            f"Found {len(dir_zips)} matches for /{ZIPFILE_RE.pattern}/",
-            *[f"    {z}" for z in dir_zips],
-            f"from {len(dir_files)} files in {SCRIPT_DIR.name}",
-            *[f"    {f}" for f in dir_files],
-        ]))
+        ok_logging_setup.exit(
+            "\n".join(
+                [
+                    f"Found {len(dir_zips)} matches for /{ZIPFILE_RE.pattern}/",
+                    *[f"    {z}" for z in dir_zips],
+                    f"from {len(dir_files)} files in {SCRIPT_DIR.name}",
+                    *[f"    {f}" for f in dir_files],
+                ]
+            )
+        )
 
     logging.info(f"📁 Creating {out_dir.name}/ ✨")
     out_dir.mkdir(parents=True)
@@ -46,21 +52,27 @@ def extract_zip_tar():
     with zipfile.ZipFile(dir_zips[0]) as zipf:
         zip_tars = [f for f in zipf.namelist() if TARFILE_RE.match(f)]
         if len(zip_tars) != 1:
-            ok_logging_setup.exit("\n".join([
-                f"Found {len(zip_tars)} matches for /{TARFILE_RE.pattern}/",
-                *[f"    {f}" for f in zip_tars],
-                f"from {len(zipf.namelist())} files in {dir_zips[0].name}",
-                *[f"    {f}" for f in zipf.namelist()],
-            ]))
+            ok_logging_setup.exit(
+                "\n".join(
+                    [
+                        f"Found {len(zip_tars)} matches for /{TARFILE_RE.pattern}/",
+                        *[f"    {f}" for f in zip_tars],
+                        f"from {len(zipf.namelist())} files in {dir_zips[0].name}",
+                        *[f"    {f}" for f in zipf.namelist()],
+                    ]
+                )
+            )
 
-        logging.info(f"🛢️ {zip_tars[0].split("/")[-1]}")
-        with zipf.open(zip_tars[0]) as tar_bin:
-            with tarfile.open(name=zip_tars[0], fileobj=tar_bin) as tarf:
-                for entry in tarf:
-                    entry.name = STRIP_RE.sub("", entry.name)
-                    if entry.name:
-                        logging.info(f"    {entry.name}")
-                        tarf.extract(entry, path=out_dir, filter="data")
+        logging.info(f"🛢️ {zip_tars[0].split('/')[-1]}")
+        with (
+            zipf.open(zip_tars[0]) as tar_bin,
+            tarfile.open(name=zip_tars[0], fileobj=tar_bin) as tarf,
+        ):
+            for entry in tarf:
+                entry.name = STRIP_RE.sub("", entry.name)
+                if entry.name:
+                    logging.info(f"    {entry.name}")
+                    tarf.extract(entry, path=out_dir, filter="data")
 
     if SDK_DIR.is_dir():
         logging.info(f"🗑️ Removing old {SDK_DIR.name}/")
@@ -76,12 +88,16 @@ def extract_deb():
     dir_files = list(SDK_DIR.iterdir())
     dir_debs = [d for d in dir_files if DEBFILE_RE.match(str(d))]
     if len(dir_debs) != 1:
-        ok_logging_setup.exit("\n".join([
-            f"Found {len(dir_debs)} matches for /{DEBFILE_RE.pattern}/",
-            *[f"    {z}" for z in dir_debs],
-            f"from {len(dir_files)} files in {SDK_DIR.name}",
-            *[f"    {f}" for f in dir_files],
-        ]))
+        ok_logging_setup.exit(
+            "\n".join(
+                [
+                    f"Found {len(dir_debs)} matches for /{DEBFILE_RE.pattern}/",
+                    *[f"    {z}" for z in dir_debs],
+                    f"from {len(dir_files)} files in {SDK_DIR.name}",
+                    *[f"    {f}" for f in dir_files],
+                ]
+            )
+        )
 
     out_dir = SDK_DIR / "deb_extract.tmp"
     if out_dir.is_dir():
@@ -96,7 +112,8 @@ def extract_deb():
         tarf = debf.data.tgz()
         for entry in tarf:
             parts = entry.name.split("/")
-            while parts and parts[0] in ["", ".", "..", "usr"]: parts[:1] = []
+            while parts and parts[0] in ["", ".", "..", "usr"]:
+                parts[:1] = []
             out = out_dir / "/".join(parts)
             data = tarf.extractfile(entry)
             if data:
