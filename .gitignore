@@ -40,3 +40,6 @@ fab/
 plots/
 jlcpcb/
 production/
+
+# Foxglove
+*.mcap
