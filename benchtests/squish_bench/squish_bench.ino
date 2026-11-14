@@ -18,9 +18,9 @@ using namespace etl::chrono_literals;
 
 static OkLoggingContext const OK_CONTEXT("squish_bench");
 
-static float constexpr STEP_ON_GAUSS = 4.0f;
+static float constexpr STEP_ON_GAUSS = 3.0f;
 static float constexpr STEP_OFF_GAUSS = 2.0f;
-static float constexpr BASELINE_MIX = 0.01f;  // updated 10ms
+static float constexpr BASELINE_MIX = 0.005f;  // updated 10ms
 
 struct Squish {
   int reader;
