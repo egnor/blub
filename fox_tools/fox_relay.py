@@ -65,7 +65,7 @@ message_channels: dict[str, foxglove.Channel] = {}
 
 
 def handle_line(
-    fox_server: foxglove.WebSocketServer,
+    web_server: foxglove.WebSocketServer,
     line_bytes: bytes,
 ):
     relay_status.line_count += 1
@@ -80,7 +80,7 @@ def handle_line(
             json.loads(json_bytes)
         except ValueError as e:
             log_level = foxglove.messages.LogLevel.Error
-            fox_server.publish_status(
+            web_server.publish_status(
                 f"{e}: {line_bytes.decode(errors='replace')}",
                 foxglove.websocket.StatusLevel.Error,
                 id=f"message:{topic}",
@@ -109,8 +109,8 @@ def handle_line(
 
 def run_connection(
     conn: ok_serial.SerialConnection,
-    fox_server: foxglove.WebSocketServer,
-    fox_writer: foxglove.mcap.MCAPWriter | None,
+    web_server: foxglove.WebSocketServer,
+    mcap_writer: foxglove.mcap.MCAPWriter | None,
 ):
     connect_mono = time.monotonic()
     status_pub_mono = 0
@@ -127,14 +127,14 @@ def run_connection(
             relay_status.connection_age = mono - connect_mono
             relay_status_channel.log(msgspec.json.encode(relay_status))
 
-        if fox_writer and mono >= writer_flush_mono:
+        if mcap_writer and mono >= writer_flush_mono:
             writer_flush_mono = mono + 5.0
-            fox_writer.flush()
+            mcap_writer.flush()
 
         in_read = conn.read_sync(timeout=0.5)
         relay_status.byte_count += len(in_read)
         while (newline_pos := in_read.find(b"\n")) >= 0:
-            handle_line(fox_server, bytes(in_buffer + in_read[:newline_pos]))
+            handle_line(web_server, bytes(in_buffer + in_read[:newline_pos]))
             in_buffer, in_read = bytearray(), in_read[newline_pos + 1 :]
         in_buffer += in_read
         del in_buffer[:-MAX_LINE_LENGTH]
@@ -144,13 +144,13 @@ def run_relay(
     *,
     match: str,
     opts: ok_serial.SerialConnectionOptions,
-    fox_server: foxglove.WebSocketServer,
-    fox_writer: foxglove.mcap.MCAPWriter | None,
+    web_server: foxglove.WebSocketServer,
+    mcap_writer: foxglove.mcap.MCAPWriter | None,
 ):
     relay_status.match = match
 
     relay_status_channel.log(msgspec.json.encode(relay_status))
-    fox_server.publish_status(
+    web_server.publish_status(
         f"Searching for serial: [{match}]",
         foxglove.websocket.StatusLevel.Info,
         id="search",
@@ -160,27 +160,27 @@ def run_relay(
     while True:
         while not (conn := serial_mon.connect_sync(timeout=0.5)):
             relay_status_channel.log(msgspec.json.encode(relay_status))
-            fox_server.publish_status(
+            web_server.publish_status(
                 f"Serial not found: [{match}] (retrying)",
                 foxglove.websocket.StatusLevel.Warning,
                 id="search",
             )
 
-        fox_server.remove_status(["search", "error"])
+        web_server.remove_status(["search", "error"])
         try:
-            run_connection(conn, fox_server, fox_writer)
+            run_connection(conn, web_server, mcap_writer)
         except ok_serial.SerialException as e:
             relay_status.connection_port = None
             relay_status.connection_age = None
             relay_status.disconnect_count += 1
             logging.error("Serial error: %s (retrying)", e)
             relay_status_channel.log(msgspec.json.encode(relay_status))
-            fox_server.publish_status(
+            web_server.publish_status(
                 f"Serial error: {e} (retrying)",
                 foxglove.websocket.StatusLevel.Error,
                 id="error",
             )
-            fox_writer.flush() if fox_writer else None
+            mcap_writer.flush() if mcap_writer else None
 
 
 def main():
@@ -200,21 +200,21 @@ def main():
 
     with contextlib.ExitStack() as exits:
         listen_host = "" if args.public else "localhost"
-        fox_server = foxglove.start_server(host=listen_host, port=args.port)
+        web_server = foxglove.start_server(host=listen_host, port=args.port)
         foxglove.start_sysinfo_publisher()
-        logging.info("🦊 Foxglove: %s", fox_server.app_url())
+        logging.info("🦊 Foxglove: %s", web_server.app_url())
 
-        fox_writer: foxglove.mcap.MCAPWriter | None = None
+        mcap_writer: foxglove.mcap.MCAPWriter | None = None
         if args.log:
             logging.info("📝 Logging: %s", args.log)
-            fox_writer = exits.enter_context(foxglove.open_mcap(args.log))
+            mcap_writer = exits.enter_context(foxglove.open_mcap(args.log))
 
         SerOpt = ok_serial.SerialConnectionOptions
         run_relay(
             match=args.serial,
             opts=SerOpt(baud=args.baud, sharing="polite"),
-            fox_server=fox_server,
-            fox_writer=fox_writer,
+            web_server=web_server,
+            mcap_writer=mcap_writer,
         )
 
 
