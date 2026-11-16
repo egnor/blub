@@ -8,6 +8,7 @@ uv = "0.13"
 "github:raspberrypi/pico-sdk-tools" = { version = "2.3.1" }
 "github:probe-rs/probe-rs" = { matching = "probe-rs-tools", version = "0.32" }
 "github:EdJoPaTo/mqttui" = "0.24.0"
+"http:foxlet" = { version = "1.8.0", url = "https://get.foxglove.dev/agent/v1.9.0/foxglove-agent-linux_1.9.0_amd64" }
 
 [tools."http:nrfutil"]
 version = "0.0"
@@ -118,6 +119,18 @@ wait_for = ["cell-modem-reset"]
 [tasks.cell-modem-reset]
 description = "Reset Nordic cell modem chip"
 run = "probe-rs reset"
+
+[tasks.logger-enable]
+description = "Install and (re)start logging services on this machine"
+run = [
+  "systemctl --user link fox_tools/foxlet.service",
+  "systemctl --user link fox_tools/mqtt_mcap_logger.service",
+  "systemctl --user daemon-reload",
+  "systemctl --user enable foxlet.service",
+  "systemctl --user enable mqtt_mcap_logger.service",
+  "systemctl --user restart foxlet.service",
+  # "systemctl --user restart mqtt_mcap_logger.service",
+]
 
 [vars]
 cell_modem_app_dir = "dev.tmp/nordic/workspace/ncs-serial-modem/app"

@@ -95,6 +95,7 @@ class LogWriter(contextlib.AbstractContextManager):
                     continue
                 try:
                     self.open_path = dir / (count_name + ".mcap.active")
+                    self.open_path.parent.mkdir(parents=True, exist_ok=True)
                     self.open_file = open(self.open_path, "xb")  # noqa: SIM115
                     fcntl.flock(self.open_file, fcntl.LOCK_EX | fcntl.LOCK_NB)
                 except FileExistsError:

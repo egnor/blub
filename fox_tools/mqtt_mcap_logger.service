@@ -1,0 +1,13 @@
+[Unit]
+Description = MQTT to MCAP logger for Project Blub
+OnFailure = status_email@%n.service
+
+[Service]
+Type = exec
+WorkingDirectory = %h/blub-deploy
+ExecStart = %h/.local/bin/mise exec -- fox_tools/mqtt_mcap_logger.py \
+  --broker=mqtts://blub:blub@eacs.io:8883/ \
+  --prefix=%h/blub-logs/mqtt
+
+[Install]
+WantedBy = default.target

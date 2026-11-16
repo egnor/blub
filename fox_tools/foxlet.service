@@ -1,0 +1,17 @@
+[Unit]
+Description = Agent to upload logs to Foxglove
+OnFailure = status_email@%n.service
+
+[Service]
+Environment = FOXGLOVE_DEVICE_TOKEN=fox_dt_phxmB2QELNflWXTdzehs7x7dLEjwDdWW
+Environment = STORAGE_ROOT=%h/blub-logs
+Environment = VARDIR=%h/blub-foxlet
+Environment = WATCH_INCLUDE_SUFFIXES=.mcap
+
+Type = exec
+WorkingDirectory = %h/blub-deploy
+ExecStartPre = mkdir -p ${VARDIR}
+ExecStart = %h/.local/bin/mise exec -- foxglove-agent
+
+[Install]
+WantedBy = default.target
