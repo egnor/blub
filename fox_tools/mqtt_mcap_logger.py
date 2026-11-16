@@ -23,8 +23,6 @@ urllib.parse.uses_netloc.extend(["mqtt", "mqtts"])
 
 
 async def main() -> None:
-    ok_logging_setup.install()
-    signal.signal(signal.SIGINT, signal.default_int_handler)
     parser = argparse.ArgumentParser(description="MQTT to MCAP logger")
     parser.add_argument(
         "--broker", type=parse_mqtt_url, required=True, help="MQTT URL"
@@ -122,6 +120,23 @@ class LogWriter(contextlib.AbstractContextManager):
         self.open_date = None
 
 
+def parse_mqtt_url(arg: str) -> urllib.parse.SplitResult:
+    arg = arg if "//" in arg else f"mqtt://{arg}"
+    try:
+        url = urllib.parse.urlsplit(arg, scheme="mqtt")
+    except ValueError as e:
+        raise argparse.ArgumentTypeError(str(e))
+
+    scheme_port = {"mqtt": 1883, "mqtts": 8883}.get(url.scheme)
+    if not scheme_port:
+        raise argparse.ArgumentTypeError(f"Bad MQTT URL scheme: {url.scheme}")
+    if not url.hostname:
+        raise argparse.ArgumentTypeError("Missing MQTT broker hostname")
+    if not url.port:
+        url = url._replace(netloc=f"{url.netloc.rstrip(':')}:{scheme_port}")
+    return url
+
+
 async def mqtt_message_iter(
     broker: urllib.parse.SplitResult, topics: list[str]
 ) -> typing.AsyncIterator[aiomqtt.PublishPacket]:
@@ -156,22 +171,16 @@ async def mqtt_message_iter(
             await asyncio.sleep(1)
 
 
-def parse_mqtt_url(arg: str) -> urllib.parse.SplitResult:
-    arg = arg if "//" in arg else f"mqtt://{arg}"
-    try:
-        url = urllib.parse.urlsplit(arg, scheme="mqtt")
-    except ValueError as e:
-        raise argparse.ArgumentTypeError(str(e))
+def on_sigint(*args):
+    raise KeyboardInterrupt()
 
-    scheme_port = {"mqtt": 1883, "mqtts": 8883}.get(url.scheme)
-    if not scheme_port:
-        raise argparse.ArgumentTypeError(f"Bad MQTT URL scheme: {url.scheme}")
-    if not url.hostname:
-        raise argparse.ArgumentTypeError("Missing MQTT broker hostname")
-    if not url.port:
-        url = url._replace(netloc=f"{url.netloc.rstrip(':')}:{scheme_port}")
-    return url
+
+def on_sigterm(*args):
+    raise SystemExit()
 
 
 if __name__ == "__main__":
+    ok_logging_setup.install()
+    signal.signal(signal.SIGINT, on_sigint)
+    signal.signal(signal.SIGTERM, on_sigterm)
     asyncio.run(main())
