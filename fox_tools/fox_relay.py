@@ -185,7 +185,6 @@ def run_relay(
 
 def main():
     ok_logging_setup.install()
-    ok_logging_setup.skip_traceback_for(KeyboardInterrupt)
     signal.signal(signal.SIGINT, signal.default_int_handler)
 
     parser = argparse.ArgumentParser(description=__doc__)
